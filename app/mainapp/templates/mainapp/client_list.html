@@ -1,0 +1,42 @@
+{% extends 'mainapp/base.html' %}
+{% block title %}Клиенты - Platon CRM{% endblock %}
+{% block content %}
+<div class="flex-between mb-15">
+    <h1>Клиенты</h1>
+</div>
+<div class="card">
+    <form method="get" class="mb-15 flex-between gap-10">
+        <input type="text" name="search" class="form-control" placeholder="Поиск..." value="{{ request.GET.search }}">
+        <button type="submit" class="btn btn-blue">Найти</button>
+        {% if request.GET.search %}
+        <a href="{% url 'client_list' %}" class="btn btn-gray">Сбросить</a>
+        {% endif %}
+    </form>
+    <table>
+        <thead>
+            <tr>
+                <th>ФИО</th>
+                <th>Email</th>
+                <th>Телефон</th>
+                <th>Организация</th>
+                <th>Менеджер</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for client in clients %}
+            <tr>
+                <td><strong>{{ client.full_name }}</strong></td>
+                <td>{{ client.email }}</td>
+                <td>{{ client.phone }}</td>
+                <td>{{ client.organization_name|default:"—" }}</td>
+                <td>{{ client.manager.get_full_name|default:"—" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center">Клиенты не найдены</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

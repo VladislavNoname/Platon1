@@ -1,0 +1,48 @@
+{% extends 'mainapp/base.html' %}
+
+{% block title %}Новая заявка - Platon CRM{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <h1>Создание новой заявки</h1>
+
+    <div class="card">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label for="id_topic">Тема заявки *</label>
+                <input type="text" name="topic" id="id_topic" class="form-control" required maxlength="255" placeholder="Введите тему заявки">
+            </div>
+
+            <div class="form-group">
+                <label for="id_description">Описание *</label>
+                <textarea name="description" id="id_description" class="form-control" rows="5" required placeholder="Опишите проблему"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="id_priority">Приоритет</label>
+                <select name="priority" id="id_priority" class="form-control">
+                    <option value="low">Низкий</option>
+                    <option value="medium" selected>Средний</option>
+                    <option value="high">Высокий</option>
+                    <option value="critical">Критический</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="files">Прикрепить файлы</label>
+                <input type="file" name="files" id="files" class="form-control" multiple>
+                <small style="color: #888;">Можно выбрать несколько файлов</small>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-blue" style="padding: 12px 30px; font-size: 16px; cursor: pointer;">
+                    ✅ Создать заявку
+                </button>
+                <a href="{% url 'dashboard' %}" class="btn btn-gray">Отмена</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

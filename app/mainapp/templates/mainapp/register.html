@@ -1,0 +1,38 @@
+{% extends 'mainapp/base.html' %}
+
+{% block title %}Регистрация - Platon CRM{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
+    <div class="card" style="width: 100%; max-width: 500px;">
+        <h2>Регистрация</h2>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" name="email" id="email" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="full_name">Полное имя *</label>
+                <input type="text" name="full_name" id="full_name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="phone">Телефон</label>
+                <input type="text" name="phone" id="phone" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="password">Пароль *</label>
+                <input type="password" name="password" id="password" class="form-control" required minlength="6">
+            </div>
+            <div class="form-group">
+                <label for="password_confirm">Подтверждение пароля *</label>
+                <input type="password" name="password_confirm" id="password_confirm" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-blue" style="width: 100%;">Зарегистрироваться</button>
+        </form>
+        <div class="text-center mt-15">
+            Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

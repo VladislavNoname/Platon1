@@ -1,0 +1,51 @@
+{% extends 'mainapp/base.html' %}
+
+{% block title %}Новая задача - Platon CRM{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <h1>Создание задачи</h1>
+
+    <div class="card">
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label for="id_title">Название задачи *</label>
+                <input type="text" name="title" id="id_title" class="form-control" required maxlength="255" placeholder="Введите название задачи">
+            </div>
+
+            <div class="form-group">
+                <label for="id_description">Описание</label>
+                <textarea name="description" id="id_description" class="form-control" rows="4" placeholder="Опишите задачу"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="id_assigned_to">Назначить сотруднику *</label>
+                <select name="assigned_to" id="id_assigned_to" class="form-control" required>
+                    <option value="">-- Выберите сотрудника --</option>
+                    {% for manager in managers %}
+                    <option value="{{ manager.pk }}">{{ manager.get_full_name }} ({{ manager.email }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="id_due_date">Срок выполнения *</label>
+                <input type="datetime-local" name="due_date" id="id_due_date" class="form-control" required>
+            </div>
+
+            {% if request_id %}
+            <input type="hidden" name="request_id" value="{{ request_id }}">
+            {% endif %}
+
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-blue" style="padding: 12px 30px; font-size: 16px; cursor: pointer;">
+                    ✅ Создать задачу
+                </button>
+                <a href="{% url 'dashboard' %}" class="btn btn-gray">Отмена</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends 'mainapp/base.html' %}
+{% block title %}Заявка {{ req.number }} - Platon CRM{% endblock %}
+{% block content %}
+<div class="flex-between mb-15">
+    <h1>Заявка {{ req.number }}</h1>
+    <a href="{% url 'request_list' %}" class="btn btn-gray">← К списку</a>
+</div>
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+    <div>
+        <div class="card">
+            <div class="flex-between mb-15">
+                <h2>Информация о заявке</h2>
+                <span>{{ req.get_status_display }}</span>
+            </div>
+            <table>
+                <tr><td><strong>Тема:</strong></td><td>{{ req.topic }}</td></tr>
+                <tr><td><strong>Описание:</strong></td><td>{{ req.description }}</td></tr>
+                <tr><td><strong>Приоритет:</strong></td><td>{{ req.get_priority_display }}</td></tr>
+                <tr><td><strong>Клиент:</strong></td><td>{{ req.client.full_name }}</td></tr>
+                <tr><td><strong>Менеджер:</strong></td><td>{{ req.manager.get_full_name|default:"Не назначен" }}</td></tr>
+                <tr><td><strong>Ответственный:</strong></td><td>{{ req.responsible.get_full_name|default:"Не назначен" }}</td></tr>
+                <tr><td><strong>Дата создания:</strong></td><td>{{ req.created_at|date:"d.m.Y H:i" }}</td></tr>
+                <tr><td><strong>Последнее обновление:</strong></td><td>{{ req.updated_at|date:"d.m.Y H:i" }}</td></tr>
+            </table>
+            {% if user.role == 'manager' or user.role == 'admin' %}
+            <div class="mt-15 gap-10">
+                {% if req.status == 'new' %}
+                <a href="{% url 'change_status' req.pk 'in_progress' %}" class="btn btn-orange">Взять в работу</a>
+                {% elif req.status == 'in_progress' %}
+                <a href="{% url 'change_status' req.pk 'on_approval' %}" class="btn btn-orange">На согласование</a>
+                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-green">Выполнена</a>
+                {% elif req.status == 'on_approval' %}
+                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-green">Выполнена</a>
+                <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-red">Отклонить</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <div class="card mt-15">
+            <h2>История изменений</h2>
+            {% for entry in history %}
+            <p><strong>{{ entry.timestamp|date:"d.m.Y H:i" }}</strong> — {{ entry.changed_by.get_full_name }}</p>
+            {% if entry.field_name %}
+            <p>{{ entry.field_name }}: {{ entry.old_value }} → {{ entry.new_value }}</p>
+            {% endif %}
+            {% if entry.comment %}<p>{{ entry.comment }}</p>{% endif %}
+            <hr>
+            {% empty %}
+            <p>История изменений пуста</p>
+            {% endfor %}
+        </div>
+    </div>
+    <div>
+        <div class="card">
+            <h2>Задачи</h2>
+            {% if req.tasks.exists %}
+            <ul>
+                {% for task in req.tasks.all %}
+                <li>
+                    <strong>{{ task.title }}</strong> {% if task.completed %}✅{% endif %}
+                    <br><small>Срок: {{ task.due_date|date:"d.m.Y" }}</small>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>Нет задач</p>
+            {% endif %}
+            <a href="{% url 'task_create_for_request' req.pk %}" class="btn btn-blue btn-sm mt-10">Добавить задачу</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

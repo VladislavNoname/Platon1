@@ -1,0 +1,74 @@
+{% extends 'mainapp/base.html' %}
+
+{% block title %}Отчёты - Platon CRM{% endblock %}
+
+{% block content %}
+<h1>Отчёты и аналитика</h1>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+    <div class="card">
+        <div class="card-header">
+            <h2>Заявки по статусам</h2>
+        </div>
+        <div class="card-body">
+            <form method="get" class="mb-20">
+                <input type="date" name="date_from" class="form-control" style="margin-bottom: 10px;">
+                <input type="date" name="date_to" class="form-control" style="margin-bottom: 10px;">
+                <button type="submit" class="btn btn-primary">Сформировать</button>
+            </form>
+            <table class="table">
+                <tr><td>Новые</td><td><strong>{{ reports.new_count|default:0 }}</strong></td></tr>
+                <tr><td>В работе</td><td><strong>{{ reports.in_progress_count|default:0 }}</strong></td></tr>
+                <tr><td>На согласовании</td><td><strong>{{ reports.on_approval_count|default:0 }}</strong></td></tr>
+                <tr><td>Выполнено</td><td><strong>{{ reports.completed_count|default:0 }}</strong></td></tr>
+                <tr><td>Отклонено</td><td><strong>{{ reports.rejected_count|default:0 }}</strong></td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Среднее время обработки</h2>
+        </div>
+        <div class="card-body">
+            <p style="font-size: 24px; font-weight: bold;">{{ reports.avg_time|default:"0" }} часов</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Загрузка менеджеров</h2>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr><th>Менеджер</th><th>Заявок</th></tr>
+                </thead>
+                <tbody>
+                    {% for manager in reports.manager_load|default:[] %}
+                    <tr>
+                        <td>{{ manager.name }}</td>
+                        <td>{{ manager.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Финансовые показатели</h2>
+        </div>
+        <div class="card-body">
+            <p>Выставлено счетов: <strong>{{ reports.total_invoices|default:"0" }} ₽</strong></p>
+            <p>Оплачено: <strong>{{ reports.paid_invoices|default:"0" }} ₽</strong></p>
+        </div>
+    </div>
+</div>
+
+<div class="mt-15" style="display: flex; gap: 10px;">
+    <button class="btn btn-blue">Скачать XLSX</button>
+    <button class="btn btn-green">Скачать PDF</button>
+</div>
+{% endblock %}
