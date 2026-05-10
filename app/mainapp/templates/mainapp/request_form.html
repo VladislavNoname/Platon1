@@ -11,30 +11,47 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label for="id_topic">Тема заявки *</label>
-                <input type="text" name="topic" id="id_topic" class="form-control" required maxlength="255" placeholder="Кратко опишите суть заявки">
-            </div>
-
-            <div class="form-group">
-                <label for="id_description">Описание *</label>
-                <textarea name="description" id="id_description" class="form-control" rows="5" required placeholder="Подробно опишите проблему или задачу"></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="id_priority">Приоритет</label>
-                <select name="priority" id="id_priority" class="form-control">
-                    <option value="low">Низкий</option>
-                    <option value="medium" selected>Средний</option>
-                    <option value="high">Высокий</option>
-                    <option value="critical">Критический</option>
+                <label for="id_service">Выберите услугу *</label>
+                <select name="service" id="id_service" class="form-control" required>
+                    <option value="">-- Выберите услугу --</option>
+                    {% for service in services %}
+                    <option value="{{ service.id }}">
+                        {{ service.name }} -
+                        {% if user.client_type == 'individual' %}
+                            {{ service.price_individual }} руб.
+                        {% else %}
+                            {{ service.price_organization }} руб.
+                        {% endif %}
+                        (срок: {{ service.default_deadline }} дн.)
+                    </option>
+                    {% endfor %}
                 </select>
+                {% if form.service.errors %}
+                    <div class="alert alert-error">{{ form.service.errors }}</div>
+                {% endif %}
             </div>
 
             <div class="form-group">
-                <label for="files">Прикрепить файлы</label>
-                <input type="file" name="files" id="files" class="form-control" multiple>
-                <small style="color: var(--gray-500);">Можно выбрать несколько файлов</small>
+                <label for="id_comment">Комментарий к заявке</label>
+                <textarea name="comment" id="id_comment" class="form-control" rows="4"
+                          placeholder="Опишите дополнительную информацию по заявке..."></textarea>
+                {% if form.comment.errors %}
+                    <div class="alert alert-error">{{ form.comment.errors }}</div>
+                {% endif %}
             </div>
+
+            {% if services %}
+            <div style="background: var(--gray-50); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 10px; font-size: 16px;">Информация о выбранной услуге:</h3>
+                <div id="service-info" style="color: var(--gray-500);">
+                    Выберите услугу из списка
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                Нет доступных услуг. Обратитесь к администратору.
+            </div>
+            {% endif %}
 
             <div class="flex-between gap-10 mt-15">
                 <button type="submit" class="btn btn-primary">✅ Создать заявку</button>
@@ -43,4 +60,66 @@
         </form>
     </div>
 </div>
+
+{% if services %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const serviceSelect = document.getElementById('id_service');
+    const serviceInfo = document.getElementById('service-info');
+
+    // Данные об услугах
+    const servicesData = {
+        {% for service in services %}
+        "{{ service.id }}": {
+            name: "{{ service.name|escapejs }}",
+            description: "{{ service.description|escapejs }}",
+            price_individual: "{{ service.price_individual }}",
+            price_organization: "{{ service.price_organization }}",
+            deadline: "{{ service.default_deadline }}",
+            documents: [
+                {% for doc in service.required_documents.all %}
+                {
+                    name: "{{ doc.name|escapejs }}",
+                    required: {{ doc.is_required|lower }}
+                }{% if not forloop.last %},{% endif %}
+                {% endfor %}
+            ]
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    serviceSelect.addEventListener('change', function() {
+        const serviceId = this.value;
+
+        if (serviceId && servicesData[serviceId]) {
+            const service = servicesData[serviceId];
+            let info = `<strong>${service.name}</strong><br><br>`;
+
+            if (service.description) {
+                info += `${service.description}<br><br>`;
+            }
+
+            info += `<strong>Стоимость:</strong><br>`;
+            info += `Физические лица: ${service.price_individual} руб.<br>`;
+            info += `Юридические лица: ${service.price_organization} руб.<br><br>`;
+
+            info += `<strong>Срок исполнения:</strong> ${service.deadline} дн.<br><br>`;
+
+            if (service.documents.length > 0) {
+                info += `<strong>Необходимые документы:</strong><br>`;
+                info += `<ul style="margin-left: 20px;">`;
+                service.documents.forEach(function(doc) {
+                    info += `<li>${doc.name} ${doc.required ? '(обязательный)' : '(дополнительный)'}</li>`;
+                });
+                info += `</ul>`;
+            }
+
+            serviceInfo.innerHTML = info;
+        } else {
+            serviceInfo.innerHTML = 'Выберите услугу из списка';
+        }
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

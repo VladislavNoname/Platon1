@@ -1,26 +1,35 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    User, Client, Service, ServiceRequest,
+    User, Service, ServiceRequest,
     RequestHistory, RequestDocument, RequiredDocument,
     Invoice, Notification
 )
 
 
 @admin.register(User)
-class UserAdmin(admin.ModelAdmin):
-    list_display = ['email', 'role', 'is_active', 'phone']
-    list_filter = ['role', 'is_active']
-    search_fields = ['email', 'first_name', 'phone']
+class UserAdmin(BaseUserAdmin):
+    list_display = ['email', 'full_name', 'role', 'client_type', 'is_active', 'phone']
+    list_filter = ['role', 'client_type', 'is_active']
+    search_fields = ['email', 'full_name', 'phone']
     ordering = ['email']
 
+    fieldsets = (
+        (None, {'fields': ('email', 'password')}),
+        ('Основная информация', {'fields': ('full_name', 'phone', 'role')}),
+        ('Данные клиента', {'fields': ('client_type', 'inn', 'kpp', 'legal_address', 'manager')}),
+        ('Права доступа', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Важные даты', {'fields': ('last_login', 'created_at', 'updated_at')}),
+    )
 
-@admin.register(Client)
-class ClientAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'email', 'client_type', 'manager', 'created_at']
-    list_filter = ['client_type', 'created_at']
-    search_fields = ['full_name', 'email', 'phone', 'inn']
-    raw_id_fields = ['user', 'manager']
-    ordering = ['-created_at']
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('email', 'full_name', 'phone', 'password1', 'password2', 'role'),
+        }),
+    )
+
+    readonly_fields = ['created_at', 'updated_at']
 
 
 class RequiredDocumentInline(admin.TabularInline):

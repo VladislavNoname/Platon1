@@ -98,3 +98,6 @@ DEFAULT_FROM_EMAIL = 'noreply@platon.ru'
 # Настройка сессий
 SESSION_COOKIE_AGE = 86400  # 24 часа
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Отключаем восстановление пароля
+PASSWORD_RESET_TIMEOUT = None  # Отключает сброс пароля

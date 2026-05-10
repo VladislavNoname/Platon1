@@ -182,7 +182,7 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label for="id_email">Email *</label>
+                {{ form.email.label_tag }}
                 {{ form.email }}
                 {% if form.email.errors %}
                     <div class="alert alert-error">{{ form.email.errors }}</div>
@@ -190,7 +190,7 @@
             </div>
 
             <div class="form-group">
-                <label for="id_full_name">Полное имя *</label>
+                {{ form.full_name.label_tag }}
                 {{ form.full_name }}
                 {% if form.full_name.errors %}
                     <div class="alert alert-error">{{ form.full_name.errors }}</div>
@@ -198,7 +198,7 @@
             </div>
 
             <div class="form-group">
-                <label for="id_phone">Телефон *</label>
+                {{ form.phone.label_tag }}
                 {{ form.phone }}
                 {% if form.phone.errors %}
                     <div class="alert alert-error">{{ form.phone.errors }}</div>
@@ -206,7 +206,7 @@
             </div>
 
             <div class="form-group">
-                <label for="id_password1">Пароль *</label>
+                {{ form.password1.label_tag }}
                 {{ form.password1 }}
                 {% if form.password1.errors %}
                     <div class="alert alert-error">{{ form.password1.errors }}</div>
@@ -217,7 +217,7 @@
             </div>
 
             <div class="form-group">
-                <label for="id_password2">Подтверждение пароля *</label>
+                {{ form.password2.label_tag }}
                 {{ form.password2 }}
                 {% if form.password2.errors %}
                     <div class="alert alert-error">{{ form.password2.errors }}</div>
@@ -238,15 +238,15 @@
 
             <div id="organization-fields" style="display: none;">
                 <div class="form-group">
-                    <label for="id_inn">ИНН</label>
+                    {{ form.inn.label_tag }}
                     {{ form.inn }}
                 </div>
                 <div class="form-group">
-                    <label for="id_kpp">КПП</label>
+                    {{ form.kpp.label_tag }}
                     {{ form.kpp }}
                 </div>
                 <div class="form-group">
-                    <label for="id_legal_address">Юридический адрес</label>
+                    {{ form.legal_address.label_tag }}
                     {{ form.legal_address }}
                 </div>
             </div>
@@ -255,7 +255,7 @@
         </form>
 
         <div class="links">
-            Уже есть аккаунт? <a href="/login/">Войти</a>
+            Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
         </div>
     </div>
 

@@ -1,81 +1,97 @@
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
 from django.core.validators import FileExtensionValidator
 import uuid
 
 
-class User(AbstractUser):
-    """Расширенная модель пользователя"""
+class UserManager(BaseUserManager):
+    """Менеджер пользователей с email аутентификацией"""
+
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('Email обязателен')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'admin')
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractBaseUser, PermissionsMixin):
+    """Расширенная модель пользователя с ролями"""
+
     ROLE_CHOICES = (
         ('client', 'Клиент'),
         ('manager', 'Менеджер'),
         ('admin', 'Администратор'),
     )
 
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='client', verbose_name='Роль')
-    email = models.EmailField(unique=True, verbose_name='Email')
-    phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
-    is_active = models.BooleanField(default=True, verbose_name='Активен')
-
-    groups = models.ManyToManyField(
-        'auth.Group',
-        verbose_name='Группы',
-        blank=True,
-        related_name="mainapp_user_groups",
-        related_query_name="user",
-    )
-    user_permissions = models.ManyToManyField(
-        'auth.Permission',
-        verbose_name='Права',
-        blank=True,
-        related_name="mainapp_user_permissions",
-        related_query_name="user",
-    )
-
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
-
-    class Meta:
-        verbose_name = 'Пользователь'
-        verbose_name_plural = 'Пользователи'
-
-    def __str__(self):
-        return f"{self.get_full_name() or self.email} ({self.get_role_display()})"
-
-
-class Client(models.Model):
-    """Модель клиента"""
-    TYPE_CHOICES = (
+    CLIENT_TYPE_CHOICES = (
+        (None, 'Не клиент'),
         ('individual', 'Физическое лицо'),
         ('organization', 'Юридическое лицо'),
     )
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='client_profile',
-                                verbose_name='Пользователь')
-    client_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='individual',
-                                   verbose_name='Тип клиента')
-    full_name = models.CharField(max_length=255, verbose_name='ФИО/Наименование')
-    phone = models.CharField(max_length=20, verbose_name='Телефон')
-    email = models.EmailField(verbose_name='Email')
+    email = models.EmailField(unique=True, verbose_name='Email')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, verbose_name='Роль')
+
+    # Общие поля
+    full_name = models.CharField(max_length=255, verbose_name='ФИО/Наименование', blank=True)
+    phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
+
+    # Поля для клиентов
+    client_type = models.CharField(max_length=20, choices=CLIENT_TYPE_CHOICES,
+                                   null=True, blank=True, verbose_name='Тип клиента')
     inn = models.CharField(max_length=12, blank=True, default='', verbose_name='ИНН')
     kpp = models.CharField(max_length=9, blank=True, default='', verbose_name='КПП')
     legal_address = models.TextField(blank=True, default='', verbose_name='Юридический адрес')
+
+    # Связь с менеджером
     manager = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='managed_clients', limit_choices_to={'role': 'manager'},
         verbose_name='Менеджер'
     )
+
+    is_active = models.BooleanField(default=True, verbose_name='Активен')
+    is_staff = models.BooleanField(default=False, verbose_name='Сотрудник')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
 
+    objects = UserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['full_name']
+
     class Meta:
-        verbose_name = 'Клиент'
-        verbose_name_plural = 'Клиенты'
+        verbose_name = 'Пользователь'
+        verbose_name_plural = 'Пользователи'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.full_name} ({self.get_client_type_display()})"
+        return f"{self.full_name or self.email} ({self.get_role_display()})"
+
+    def get_full_name(self):
+        return self.full_name or self.email
+
+    def get_short_name(self):
+        return self.full_name.split()[0] if self.full_name else self.email
+
+    def is_client(self):
+        return self.role == 'client'
+
+    def is_manager(self):
+        return self.role == 'manager'
+
+    def is_admin(self):
+        return self.role == 'admin'
 
 
 class Service(models.Model):
@@ -97,9 +113,10 @@ class Service(models.Model):
         ordering = ['name']
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({'Физ: ' + str(self.price_individual) + ' руб.' if self.price_individual > 0 else ''}{'Юр: ' + str(self.price_organization) + ' руб.' if self.price_organization > 0 else ''})"
 
     def get_price_for_client(self, client):
+        """Возвращает цену в зависимости от типа клиента"""
         if client.client_type == 'individual':
             return self.price_individual
         return self.price_organization
@@ -107,7 +124,8 @@ class Service(models.Model):
 
 class RequiredDocument(models.Model):
     """Обязательные документы для услуги"""
-    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='required_documents',
+    service = models.ForeignKey(Service, on_delete=models.CASCADE,
+                                related_name='required_documents',
                                 verbose_name='Услуга')
     name = models.CharField(max_length=255, verbose_name='Название документа')
     is_required = models.BooleanField(default=True, verbose_name='Обязательный')
@@ -133,13 +151,17 @@ class ServiceRequest(models.Model):
     )
 
     number = models.CharField(max_length=20, unique=True, editable=False, verbose_name='Номер заявки')
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='requests', verbose_name='Клиент')
-    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='requests', verbose_name='Услуга')
+    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name='requests',
+                               limit_choices_to={'role': 'client'}, verbose_name='Клиент')
+    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='requests',
+                                verbose_name='Услуга')
     manager = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='assigned_requests', verbose_name='Менеджер'
+        related_name='assigned_requests', limit_choices_to={'role': 'manager'},
+        verbose_name='Менеджер'
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new', verbose_name='Статус')
+    comment = models.TextField(blank=True, default='', verbose_name='Комментарий клиента')
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Стоимость')
     deadline = models.DateField(default=timezone.now, verbose_name='Срок исполнения')
     rejection_reason = models.TextField(blank=True, default='', verbose_name='Причина отклонения')
@@ -159,12 +181,24 @@ class ServiceRequest(models.Model):
     def __str__(self):
         return f"{self.number} - {self.service.name}"
 
+    def get_required_documents(self):
+        return self.service.required_documents.filter(is_required=True)
+
+    def get_missing_documents(self):
+        required_docs = self.get_required_documents()
+        uploaded_docs = self.documents.values_list('required_document_id', flat=True)
+        return required_docs.exclude(id__in=uploaded_docs)
+
+    def are_all_documents_uploaded(self):
+        return not self.get_missing_documents().exists()
+
 
 class RequestDocument(models.Model):
     """Документы, прикрепленные к заявке"""
-    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name='documents',
-                                verbose_name='Заявка')
-    required_document = models.ForeignKey(RequiredDocument, on_delete=models.PROTECT, verbose_name='Тип документа')
+    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE,
+                                related_name='documents', verbose_name='Заявка')
+    required_document = models.ForeignKey(RequiredDocument, on_delete=models.PROTECT,
+                                          verbose_name='Тип документа')
     file = models.FileField(
         upload_to='documents/%Y/%m/',
         validators=[FileExtensionValidator(['pdf'])],
@@ -182,7 +216,8 @@ class RequestDocument(models.Model):
 
 class RequestHistory(models.Model):
     """История изменений заявки"""
-    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name='history', verbose_name='Заявка')
+    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE,
+                                related_name='history', verbose_name='Заявка')
     changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name='Изменил')
     timestamp = models.DateTimeField(auto_now_add=True, verbose_name='Время изменения')
     field_name = models.CharField(max_length=50, blank=True, default='', verbose_name='Поле')
@@ -201,8 +236,8 @@ class RequestHistory(models.Model):
 
 class Invoice(models.Model):
     """Счет на оплату"""
-    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name='invoices',
-                                verbose_name='Заявка')
+    request = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE,
+                                related_name='invoices', verbose_name='Заявка')
     number = models.CharField(max_length=50, unique=True, editable=False, verbose_name='Номер счета')
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Сумма')
     is_paid = models.BooleanField(default=False, verbose_name='Оплачен')
@@ -233,7 +268,8 @@ class Notification(models.Model):
         ('new_request', 'Новая заявка'),
     )
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications', verbose_name='Пользователь')
+    user = models.ForeignKey(User, on_delete=models.CASCADE,
+                             related_name='notifications', verbose_name='Пользователь')
     notification_type = models.CharField(
         max_length=20, choices=NOTIFICATION_TYPES, default='registration',
         verbose_name='Тип уведомления'

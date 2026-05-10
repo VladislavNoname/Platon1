@@ -9,7 +9,7 @@ from django.conf import settings
 from datetime import timedelta
 
 from .models import (
-    User, Client, Service, ServiceRequest,
+    User, Service, ServiceRequest,
     RequestHistory, RequestDocument, RequiredDocument,
     Invoice, Notification
 )
@@ -19,10 +19,8 @@ from .forms import CustomUserCreationForm, ServiceRequestForm
 def user_login(request):
     """Авторизация пользователя"""
     if request.method == 'POST':
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-
-        print(f"Попытка входа: {email}")  # Для отладки
+        email = request.POST.get('email', '').strip().lower()
+        password = request.POST.get('password', '')
 
         # Аутентификация по email
         user = authenticate(request, email=email, password=password)
@@ -30,7 +28,7 @@ def user_login(request):
         if user is not None:
             if user.is_active:
                 login(request, user)
-                messages.success(request, f'Добро пожаловать, {user.email}!')
+                messages.success(request, f'Добро пожаловать, {user.full_name or user.email}!')
 
                 # Перенаправление в зависимости от роли
                 if user.role == 'admin':
@@ -42,7 +40,6 @@ def user_login(request):
             else:
                 messages.error(request, 'Ваша учетная запись заблокирована')
         else:
-            print("Ошибка аутентификации")  # Для отладки
             messages.error(request, 'Неверный email или пароль')
 
     return render(request, 'mainapp/login.html')
@@ -54,31 +51,30 @@ def register(request):
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             # Создаем пользователя
-            user = User.objects.create_user(
-                email=form.cleaned_data['email'],
-                username=form.cleaned_data['email'].split('@')[0],
-                password=form.cleaned_data['password1'],
-                role='client',
-                first_name=form.cleaned_data['full_name'],
-                phone=form.cleaned_data['phone']
-            )
+            user = form.save(commit=False)
+            user.role = 'client'
+            user.client_type = form.cleaned_data['client_type']
 
-            # Устанавливаем backend для пользователя
+            if user.client_type == 'organization':
+                user.inn = form.cleaned_data.get('inn', '')
+                user.kpp = form.cleaned_data.get('kpp', '')
+                user.legal_address = form.cleaned_data.get('legal_address', '')
+
+            user.save()
+
+            # ВАЖНО: Устанавливаем backend перед login()
             user.backend = 'mainapp.backends.EmailBackend'
 
-            # Создаем профиль клиента
-            Client.objects.create(
-                user=user,
-                client_type=form.cleaned_data['client_type'],
-                full_name=form.cleaned_data['full_name'],
-                phone=form.cleaned_data['phone'],
-                email=form.cleaned_data['email'],
-                inn=form.cleaned_data.get('inn', ''),
-                kpp=form.cleaned_data.get('kpp', ''),
-                legal_address=form.cleaned_data.get('legal_address', '')
-            )
+            # Создаем уведомление для всех менеджеров о новом клиенте
+            managers = User.objects.filter(role='manager', is_active=True)
+            for manager in managers:
+                Notification.objects.create(
+                    user=manager,
+                    notification_type='registration',
+                    message=f'Зарегистрирован новый клиент: {user.full_name} ({user.email})'
+                )
 
-            # Создаем уведомление
+            # Создаем уведомление для пользователя
             Notification.objects.create(
                 user=user,
                 notification_type='registration',
@@ -113,29 +109,26 @@ def dashboard(request):
     user = request.user
     context = {'user': user}
 
-    if user.role == 'client' and hasattr(user, 'client_profile'):
-        requests = ServiceRequest.objects.filter(client=user.client_profile)
-        context['requests'] = requests.order_by('-created_at')[:10]
-        context['total_requests'] = requests.count()
-        context['new_count'] = requests.filter(status='new').count()
-        context['in_progress_count'] = requests.filter(status='in_progress').count()
-        context['completed_count'] = requests.filter(status='completed').count()
-
+    if user.role == 'client':
+        requests = ServiceRequest.objects.filter(client=user)
     elif user.role == 'manager':
-        requests = ServiceRequest.objects.filter(client__manager=user)
-        context['requests'] = requests.order_by('-created_at')[:10]
-        context['total_requests'] = requests.count()
-        context['new_count'] = requests.filter(status='new').count()
-        context['in_progress_count'] = requests.filter(status='in_progress').count()
-        context['completed_count'] = requests.filter(status='completed').count()
+        # Менеджер видит все заявки и своих клиентов
+        requests = ServiceRequest.objects.all()
+        my_clients = User.objects.filter(role='client', manager=user)
+        my_requests = ServiceRequest.objects.filter(manager=user)
 
+        context['my_clients_count'] = my_clients.count()
+        context['my_requests_count'] = my_requests.count()
     elif user.role == 'admin':
         requests = ServiceRequest.objects.all()
-        context['requests'] = requests.order_by('-created_at')[:10]
-        context['total_requests'] = requests.count()
-        context['new_count'] = requests.filter(status='new').count()
-        context['in_progress_count'] = requests.filter(status='in_progress').count()
-        context['completed_count'] = requests.filter(status='completed').count()
+    else:
+        requests = ServiceRequest.objects.none()
+
+    context['requests'] = requests.order_by('-created_at')[:10]
+    context['total_requests'] = requests.count()
+    context['new_count'] = requests.filter(status='new').count()
+    context['in_progress_count'] = requests.filter(status='in_progress').count()
+    context['completed_count'] = requests.filter(status='completed').count()
 
     # Уведомления
     context['notifications'] = Notification.objects.filter(
@@ -148,25 +141,26 @@ def dashboard(request):
 
 @login_required
 def request_create(request):
-    """Создание заявки"""
-    if not hasattr(request.user, 'client_profile'):
-        messages.error(request, 'У вас нет профиля клиента')
+    """Создание заявки клиентом"""
+    if request.user.role != 'client':
+        messages.error(request, 'Только клиенты могут создавать заявки')
         return redirect('dashboard')
 
     if request.method == 'POST':
         form = ServiceRequestForm(request.POST)
         if form.is_valid():
-            client = request.user.client_profile
             service = form.cleaned_data['service']
+            comment = form.cleaned_data.get('comment', '')
 
             # Определяем цену в зависимости от типа клиента
-            price = service.get_price_for_client(client)
+            price = service.get_price_for_client(request.user)
 
             # Создаем заявку
             service_request = ServiceRequest.objects.create(
-                client=client,
+                client=request.user,
                 service=service,
                 price=price,
+                comment=comment,
                 deadline=timezone.now().date() + timedelta(days=service.default_deadline)
             )
 
@@ -175,10 +169,28 @@ def request_create(request):
                 request=service_request,
                 changed_by=request.user,
                 field_name='status',
-                new_value='Новая'
+                new_value='Новая',
+                comment=f'Заявка создана. Услуга: {service.name}. Комментарий: {comment}' if comment else f'Заявка создана. Услуга: {service.name}'
             )
 
-            messages.success(request, f'Заявка {service_request.number} создана!')
+            # Уведомление всем менеджерам о новой заявке
+            managers = User.objects.filter(role='manager', is_active=True)
+            for manager in managers:
+                Notification.objects.create(
+                    user=manager,
+                    notification_type='new_request',
+                    message=f'Новая заявка {service_request.number} от клиента {request.user.full_name}'
+                )
+
+            # Уведомление менеджеру клиента (если есть)
+            if request.user.manager:
+                Notification.objects.create(
+                    user=request.user.manager,
+                    notification_type='new_request',
+                    message=f'Новая заявка {service_request.number} от вашего клиента {request.user.full_name}'
+                )
+
+            messages.success(request, f'Заявка {service_request.number} успешно создана!')
             return redirect('request_detail', pk=service_request.pk)
     else:
         form = ServiceRequestForm()
@@ -197,10 +209,11 @@ def request_list(request):
     """Список заявок"""
     user = request.user
 
-    if user.role == 'client' and hasattr(user, 'client_profile'):
-        requests = ServiceRequest.objects.filter(client=user.client_profile)
+    if user.role == 'client':
+        requests = ServiceRequest.objects.filter(client=user)
     elif user.role == 'manager':
-        requests = ServiceRequest.objects.filter(client__manager=user)
+        # Менеджер видит ВСЕ заявки
+        requests = ServiceRequest.objects.all()
     elif user.role == 'admin':
         requests = ServiceRequest.objects.all()
     else:
@@ -211,8 +224,17 @@ def request_list(request):
     if status_filter:
         requests = requests.filter(status=status_filter)
 
+    # Поиск по номеру заявки или клиенту
+    search = request.GET.get('search')
+    if search:
+        requests = requests.filter(
+            Q(number__icontains=search) |
+            Q(client__full_name__icontains=search) |
+            Q(service__name__icontains=search)
+        )
+
     return render(request, 'mainapp/request_list.html', {
-        'requests': requests.select_related('client', 'service', 'manager')
+        'requests': requests.select_related('client', 'service', 'manager').order_by('-created_at')
     })
 
 
@@ -227,22 +249,17 @@ def request_detail(request, pk):
     # Проверка доступа
     user = request.user
     if user.role == 'client':
-        if not hasattr(user, 'client_profile') or service_request.client != user.client_profile:
+        if service_request.client != user:
             messages.error(request, 'Доступ запрещен')
             return redirect('dashboard')
-    elif user.role == 'manager':
-        if service_request.client.manager != user:
-            messages.error(request, 'Доступ запрещен')
-            return redirect('dashboard')
+    # Менеджер и админ видят все заявки
 
     history = service_request.history.all().order_by('-timestamp')
     documents = service_request.documents.all()
     invoices = service_request.invoices.all()
 
-    # Проверяем, все ли обязательные документы загружены
-    required_docs = service_request.service.required_documents.filter(is_required=True)
-    uploaded_docs = documents.values_list('required_document_id', flat=True)
-    missing_docs = required_docs.exclude(id__in=uploaded_docs)
+    # Документы, которые нужно загрузить
+    missing_docs = service_request.get_missing_documents()
 
     return render(request, 'mainapp/request_detail.html', {
         'req': service_request,
@@ -251,6 +268,54 @@ def request_detail(request, pk):
         'invoices': invoices,
         'missing_docs': missing_docs
     })
+
+
+@login_required
+def request_take(request, pk):
+    """Менеджер берет заявку в работу"""
+    if request.user.role != 'manager':
+        messages.error(request, 'Только менеджер может взять заявку в работу')
+        return redirect('request_detail', pk=pk)
+
+    service_request = get_object_or_404(ServiceRequest, pk=pk)
+
+    if service_request.manager is not None:
+        messages.warning(request, f'Эта заявка уже назначена менеджеру {service_request.manager.full_name}')
+        return redirect('request_detail', pk=pk)
+
+    # Назначаем менеджера и меняем статус
+    old_status = service_request.get_status_display()
+    service_request.manager = request.user
+    service_request.status = 'in_progress'
+    service_request.save()
+
+    # История
+    RequestHistory.objects.create(
+        request=service_request,
+        changed_by=request.user,
+        field_name='manager',
+        old_value='Не назначен',
+        new_value=request.user.full_name,
+        comment='Менеджер взял заявку в работу'
+    )
+
+    RequestHistory.objects.create(
+        request=service_request,
+        changed_by=request.user,
+        field_name='status',
+        old_value=old_status,
+        new_value='В работе'
+    )
+
+    # Уведомление клиенту
+    Notification.objects.create(
+        user=service_request.client,
+        notification_type='status_change',
+        message=f'Менеджер {request.user.full_name} взял в работу вашу заявку {service_request.number}'
+    )
+
+    messages.success(request, f'Вы взяли заявку {service_request.number} в работу')
+    return redirect('request_detail', pk=pk)
 
 
 @login_required
@@ -265,13 +330,14 @@ def request_change_status(request, pk, new_status):
 
     # Проверка доступа для менеджера
     if request.user.role == 'manager':
-        if service_request.client.manager != request.user:
-            messages.error(request, 'Доступ запрещен')
-            return redirect('dashboard')
+        # Менеджер может менять статус только если заявка назначена ему или никому не назначена
+        if service_request.manager and service_request.manager != request.user:
+            messages.error(request, 'Вы не можете менять статус чужой заявки. Сначала возьмите её в работу.')
+            return redirect('request_detail', pk=pk)
 
     # Логика переходов статусов
     valid_transitions = {
-        'new': ['awaiting_payment', 'rejected'],
+        'new': ['in_progress', 'rejected'],
         'awaiting_payment': ['in_progress', 'rejected'],
         'in_progress': ['completed', 'rejected'],
         'completed': [],
@@ -279,6 +345,11 @@ def request_change_status(request, pk, new_status):
     }
 
     if new_status in valid_transitions.get(service_request.status, []):
+        # Проверка на наличие всех документов при переходе
+        if new_status == 'in_progress':
+            if not service_request.manager:
+                service_request.manager = request.user
+
         service_request.status = new_status
 
         if new_status == 'rejected':
@@ -298,19 +369,22 @@ def request_change_status(request, pk, new_status):
 
         # Создаем уведомление для клиента
         Notification.objects.create(
-            user=service_request.client.user,
+            user=service_request.client,
             notification_type='status_change',
             message=f'Статус вашей заявки {service_request.number} изменен на "{service_request.get_status_display()}"'
         )
 
         # Отправляем email
-        send_mail(
-            f'Изменение статуса заявки {service_request.number}',
-            f'Статус вашей заявки изменен на "{service_request.get_status_display()}"',
-            settings.DEFAULT_FROM_EMAIL,
-            [service_request.client.email],
-            fail_silently=True
-        )
+        try:
+            send_mail(
+                f'Изменение статуса заявки {service_request.number}',
+                f'Статус вашей заявки изменен на "{service_request.get_status_display()}"',
+                settings.DEFAULT_FROM_EMAIL,
+                [service_request.client.email],
+                fail_silently=True
+            )
+        except:
+            pass
 
         messages.success(request, f'Статус изменен на "{service_request.get_status_display()}"')
     else:
@@ -326,7 +400,7 @@ def upload_document(request, pk):
 
     # Проверка доступа
     if request.user.role == 'client':
-        if not hasattr(request.user, 'client_profile') or service_request.client != request.user.client_profile:
+        if service_request.client != request.user:
             messages.error(request, 'Доступ запрещен')
             return redirect('dashboard')
 
@@ -345,7 +419,17 @@ def upload_document(request, pk):
                 messages.error(request, 'Допустимы только PDF файлы')
                 return redirect('request_detail', pk=pk)
 
+            # Проверка MIME типа
+            if file.content_type != 'application/pdf':
+                messages.error(request, 'Файл должен быть формата PDF')
+                return redirect('request_detail', pk=pk)
+
             required_doc = get_object_or_404(RequiredDocument, pk=required_doc_id)
+
+            # Проверяем, что документ относится к услуге заявки
+            if required_doc.service != service_request.service:
+                messages.error(request, 'Этот тип документа не относится к выбранной услуге')
+                return redirect('request_detail', pk=pk)
 
             RequestDocument.objects.create(
                 request=service_request,
@@ -370,14 +454,10 @@ def create_invoice(request, pk):
     service_request = get_object_or_404(ServiceRequest, pk=pk)
 
     # Проверяем, что все обязательные документы загружены
-    missing_docs = service_request.service.required_documents.filter(
-        is_required=True
-    ).exclude(
-        id__in=service_request.documents.values_list('required_document_id', flat=True)
-    )
-
-    if missing_docs.exists():
-        messages.error(request, 'Не все обязательные документы загружены')
+    if not service_request.are_all_documents_uploaded():
+        missing = service_request.get_missing_documents().values_list('name', flat=True)
+        messages.error(request, 'Не все обязательные документы загружены. Требуется загрузить: ' +
+                       ', '.join(missing))
         return redirect('request_detail', pk=pk)
 
     # Создаем счет
@@ -397,24 +477,30 @@ def create_invoice(request, pk):
         changed_by=request.user,
         field_name='status',
         old_value=old_status,
-        new_value='Ожидает оплаты'
+        new_value='Ожидает оплаты',
+        comment=f'Создан счет {invoice.number}'
     )
 
     # Уведомление клиенту
     Notification.objects.create(
-        user=service_request.client.user,
+        user=service_request.client,
         notification_type='payment_required',
-        message=f'Выставлен счет {invoice.number} на оплату заявки {service_request.number}'
+        message=f'Выставлен счет {invoice.number} на оплату заявки {service_request.number} на сумму {invoice.amount} руб.'
     )
 
     # Отправляем email со счетом
-    send_mail(
-        f'Счет на оплату {invoice.number}',
-        f'Выставлен счет на оплату заявки {service_request.number}. Сумма: {invoice.amount} руб.',
-        settings.DEFAULT_FROM_EMAIL,
-        [service_request.client.email],
-        fail_silently=True
-    )
+    try:
+        send_mail(
+            f'Счет на оплату {invoice.number}',
+            f'Выставлен счет на оплату заявки {service_request.number}.\n\n' +
+            f'Сумма: {invoice.amount} руб.\n\n' +
+            f'Для просмотра счета войдите в личный кабинет.',
+            settings.DEFAULT_FROM_EMAIL,
+            [service_request.client.email],
+            fail_silently=True
+        )
+    except:
+        pass
 
     messages.success(request, f'Счет {invoice.number} создан')
     return redirect('request_detail', pk=pk)
@@ -436,6 +522,11 @@ def mark_payment(request, pk):
     service_request = invoice.request
     old_status = service_request.get_status_display()
     service_request.status = 'in_progress'
+
+    # Назначаем менеджера, если еще не назначен
+    if not service_request.manager:
+        service_request.manager = request.user
+
     service_request.save()
 
     # История
@@ -444,7 +535,8 @@ def mark_payment(request, pk):
         changed_by=request.user,
         field_name='status',
         old_value=old_status,
-        new_value='В работе'
+        new_value='В работе',
+        comment='Оплата получена'
     )
 
     messages.success(request, 'Оплата отмечена')
@@ -457,11 +549,12 @@ def client_list(request):
     user = request.user
 
     if user.role == 'manager':
-        clients = Client.objects.filter(manager=user)
+        # Менеджер видит всех клиентов
+        clients = User.objects.filter(role='client')
     elif user.role == 'admin':
-        clients = Client.objects.all()
+        clients = User.objects.filter(role='client')
     else:
-        clients = Client.objects.none()
+        clients = User.objects.none()
 
     # Поиск
     search = request.GET.get('search')
@@ -474,8 +567,27 @@ def client_list(request):
         )
 
     return render(request, 'mainapp/client_list.html', {
-        'clients': clients.select_related('manager')
+        'clients': clients
     })
+
+
+@login_required
+def assign_client(request, pk):
+    """Менеджер берет клиента себе"""
+    if request.user.role != 'manager':
+        messages.error(request, 'Только менеджер может взять клиента')
+        return redirect('client_list')
+
+    client = get_object_or_404(User, pk=pk, role='client')
+
+    if client.manager and client.manager != request.user:
+        messages.warning(request, f'Клиент уже закреплен за менеджером {client.manager.full_name}')
+    else:
+        client.manager = request.user
+        client.save()
+        messages.success(request, f'Клиент {client.full_name} закреплен за вами')
+
+    return redirect('client_list')
 
 
 @login_required
@@ -516,12 +628,22 @@ def reports(request):
     paid_amount = invoices.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
 
     # Загрузка менеджеров
-    manager_load = User.objects.filter(role='manager').annotate(
-        request_count=Count('assigned_requests', filter=models.Q(
-            assigned_requests__created_at__gte=date_from if date_from else timezone.now().replace(day=1),
-            assigned_requests__created_at__lte=date_to if date_to else timezone.now()
-        ))
-    ).values('first_name', 'email', 'request_count')
+    if date_from and date_to:
+        manager_load = User.objects.filter(role='manager').annotate(
+            request_count=Count('assigned_requests', filter=Q(
+                assigned_requests__created_at__gte=date_from,
+                assigned_requests__created_at__lte=date_to
+            ))
+        ).values('full_name', 'email', 'request_count')
+    else:
+        # Если даты не указаны, показываем за текущий месяц
+        today = timezone.now()
+        manager_load = User.objects.filter(role='manager').annotate(
+            request_count=Count('assigned_requests', filter=Q(
+                assigned_requests__created_at__year=today.year,
+                assigned_requests__created_at__month=today.month
+            ))
+        ).values('full_name', 'email', 'request_count')
 
     return render(request, 'mainapp/reports.html', {
         'reports': reports_data,

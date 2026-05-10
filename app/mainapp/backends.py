@@ -17,6 +17,8 @@ class EmailBackend(ModelBackend):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
+            # Запускаем стандартный set_password для повышения безопасности
+            User().set_password(password)
             return None
 
         if user.check_password(password) and self.user_can_authenticate(user):
@@ -25,4 +27,4 @@ class EmailBackend(ModelBackend):
         return None
 
     def user_can_authenticate(self, user):
-        return user.is_active
+        return user.is_active and user.is_active  # Проверяем что пользователь активен

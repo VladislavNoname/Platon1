@@ -11,44 +11,201 @@
         <div class="card">
             <div class="flex-between mb-15">
                 <h2>Информация о заявке</h2>
-                <span class="role-badge">{{ req.get_status_display }}</span>
+                <span class="status-badge status-{{ req.status }}">{{ req.get_status_display }}</span>
             </div>
+
             <table>
-                <tr><td><strong>Тема:</strong></td><td>{{ req.topic }}</td></tr>
-                <tr><td><strong>Описание:</strong></td><td>{{ req.description }}</td></tr>
-                <tr><td><strong>Приоритет:</strong></td><td>{{ req.get_priority_display }}</td></tr>
+                <tr><td><strong>Номер заявки:</strong></td><td>{{ req.number }}</td></tr>
+                <tr><td><strong>Услуга:</strong></td><td>{{ req.service.name }}</td></tr>
                 <tr><td><strong>Клиент:</strong></td><td>{{ req.client.full_name }}</td></tr>
-                <tr><td><strong>Менеджер:</strong></td><td>{{ req.manager.get_full_name|default:"Не назначен" }}</td></tr>
-                <tr><td><strong>Ответственный:</strong></td><td>{{ req.responsible.get_full_name|default:"Не назначен" }}</td></tr>
+                <tr><td><strong>Email клиента:</strong></td><td>{{ req.client.email }}</td></tr>
+                <tr><td><strong>Телефон клиента:</strong></td><td>{{ req.client.phone }}</td></tr>
+                <tr><td><strong>Стоимость:</strong></td><td>{{ req.price }} руб.</td></tr>
+                <tr><td><strong>Срок исполнения:</strong></td><td>{{ req.deadline|date:"d.m.Y" }}</td></tr>
+                <tr><td><strong>Менеджер:</strong></td><td>{{ req.manager.full_name|default:"Не назначен" }}</td></tr>
                 <tr><td><strong>Дата создания:</strong></td><td>{{ req.created_at|date:"d.m.Y H:i" }}</td></tr>
                 <tr><td><strong>Последнее обновление:</strong></td><td>{{ req.updated_at|date:"d.m.Y H:i" }}</td></tr>
+                {% if req.comment %}
+                <tr><td><strong>Комментарий клиента:</strong></td><td>{{ req.comment }}</td></tr>
+                {% endif %}
+                {% if req.rejection_reason %}
+                <tr><td><strong>Причина отклонения:</strong></td><td style="color: var(--danger);">{{ req.rejection_reason }}</td></tr>
+                {% endif %}
             </table>
 
-            {% if user.role == 'manager' or user.role == 'admin' %}
+            {% if user.role == 'manager' and req.status == 'new' and not req.manager %}
+            <div class="mt-15">
+                <a href="{% url 'request_take' req.pk %}" class="btn btn-success btn-lg">
+                    🤝 Взять заявку в работу
+                </a>
+            </div>
+            {% endif %}
+
+            {% if user.role == 'manager' and req.manager == user %}
             <div class="mt-15 flex-between gap-10" style="flex-wrap: wrap;">
-                {% if req.status == 'new' %}
-                <a href="{% url 'change_status' req.pk 'in_progress' %}" class="btn btn-warning">Взять в работу</a>
+                {% if req.status == 'new' or req.status == 'in_progress' %}
+                <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning">
+                        📄 Создать счет на оплату
+                    </button>
+                </form>
+                <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
+                    {% csrf_token %}
+                    <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
+                    <button type="submit" class="btn btn-danger">Отклонить</button>
+                </form>
+                {% elif req.status == 'awaiting_payment' %}
+                <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">
+                    💰 Отметить оплату
+                </a>
+                <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
+                    {% csrf_token %}
+                    <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
+                    <button type="submit" class="btn btn-danger">Отклонить</button>
+                </form>
                 {% elif req.status == 'in_progress' %}
-                <a href="{% url 'change_status' req.pk 'on_approval' %}" class="btn btn-warning">На согласование</a>
-                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">Выполнена</a>
-                {% elif req.status == 'on_approval' %}
-                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">Выполнена</a>
+                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">
+                    ✅ Отметить как выполненную
+                </a>
+                <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
+                    {% csrf_token %}
+                    <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
+                    <button type="submit" class="btn btn-danger">Отклонить</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if user.role == 'admin' %}
+            <div class="mt-15 flex-between gap-10" style="flex-wrap: wrap;">
+                {% if req.status == 'new' or req.status == 'in_progress' %}
+                <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning">
+                        📄 Создать счет на оплату
+                    </button>
+                </form>
+                <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
+                {% elif req.status == 'awaiting_payment' %}
+                <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">
+                    💰 Отметить оплату
+                </a>
+                <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
+                {% elif req.status == 'in_progress' %}
+                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">
+                    ✅ Отметить как выполненную
+                </a>
                 <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
                 {% endif %}
             </div>
             {% endif %}
         </div>
 
+        {% if user.role == 'client' and missing_docs %}
+        <div class="card mt-15">
+            <h2>Загрузка документов</h2>
+            <p style="color: var(--gray-600); margin-bottom: 15px;">
+                Для услуги "{{ req.service.name }}" необходимо загрузить следующие документы:
+            </p>
+
+            {% for doc in missing_docs %}
+            <div style="margin-bottom: 15px; padding: 10px; background: var(--warning-light); border-radius: 8px;">
+                <form method="post" action="{% url 'upload_document' req.pk %}" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    {% csrf_token %}
+                    <input type="hidden" name="required_document" value="{{ doc.id }}">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong style="color: #92400e;">{{ doc.name }}</strong>
+                        <span class="status-badge" style="background: var(--danger-light); color: #991b1b; font-size: 11px;">обязательный</span>
+                    </div>
+                    <input type="file" name="file" accept=".pdf" required class="form-control" style="width: auto; flex: 2;">
+                    <button type="submit" class="btn btn-primary btn-sm">📎 Загрузить</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if documents %}
+        <div class="card mt-15">
+            <h2>Загруженные документы</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Документ</th>
+                        <th>Файл</th>
+                        <th>Дата загрузки</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr>
+                        <td>{{ doc.required_document.name }}</td>
+                        <td>
+                            <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
+                                📄 {{ doc.file.name|slice:"20:" }}
+                            </a>
+                        </td>
+                        <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if invoices %}
+        <div class="card mt-15">
+            <h2>Счета</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Номер счета</th>
+                        <th>Сумма</th>
+                        <th>Статус</th>
+                        <th>Дата оплаты</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                    <tr>
+                        <td>{{ invoice.number }}</td>
+                        <td>{{ invoice.amount }} руб.</td>
+                        <td>
+                            {% if invoice.is_paid %}
+                            <span class="status-badge status-completed">Оплачен</span>
+                            {% else %}
+                            <span class="status-badge status-awaiting_payment">Не оплачен</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ invoice.paid_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                        <td>
+                            {% if not invoice.is_paid and user.role == 'manager' %}
+                            <a href="{% url 'mark_payment' invoice.pk %}" class="btn btn-sm btn-success">Отметить оплату</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
         <div class="card mt-15">
             <h2>История изменений</h2>
             {% for entry in history %}
             <div style="padding: 12px 0; border-bottom: 1px solid var(--gray-100);">
                 <strong style="color: var(--gray-700);">{{ entry.timestamp|date:"d.m.Y H:i" }}</strong>
-                — {{ entry.changed_by.get_full_name }}
+                — {{ entry.changed_by.full_name|default:"Система" }}
                 {% if entry.field_name %}
-                <br><span style="font-size: 13px; color: var(--gray-500);">{{ entry.field_name }}: {{ entry.old_value }} → {{ entry.new_value }}</span>
+                <br><span style="font-size: 13px; color: var(--gray-500);">
+                    {{ entry.field_name }}: {{ entry.old_value }} → {{ entry.new_value }}
+                </span>
                 {% endif %}
-                {% if entry.comment %}<br><span style="font-size: 13px;">{{ entry.comment }}</span>{% endif %}
+                {% if entry.comment %}
+                <br><span style="font-size: 13px;">{{ entry.comment }}</span>
+                {% endif %}
             </div>
             {% empty %}
             <p class="text-gray">История изменений пуста</p>
@@ -58,21 +215,52 @@
 
     <div>
         <div class="card">
-            <h2>Задачи</h2>
-            {% if req.tasks.exists %}
+            <h2>Информация о клиенте</h2>
+            <table>
+                <tr><td><strong>ФИО:</strong></td><td>{{ req.client.full_name }}</td></tr>
+                <tr><td><strong>Email:</strong></td><td>{{ req.client.email }}</td></tr>
+                <tr><td><strong>Телефон:</strong></td><td>{{ req.client.phone }}</td></tr>
+                <tr><td><strong>Тип:</strong></td><td>{{ req.client.get_client_type_display }}</td></tr>
+                {% if req.client.inn %}
+                <tr><td><strong>ИНН:</strong></td><td>{{ req.client.inn }}</td></tr>
+                <tr><td><strong>КПП:</strong></td><td>{{ req.client.kpp }}</td></tr>
+                <tr><td><strong>Юр. адрес:</strong></td><td>{{ req.client.legal_address }}</td></tr>
+                {% endif %}
+                <tr><td><strong>Менеджер:</strong></td><td>{{ req.client.manager.full_name|default:"Не назначен" }}</td></tr>
+            </table>
+        </div>
+
+        <div class="card mt-15">
+            <h2>Информация об услуге</h2>
+            <table>
+                <tr><td><strong>Название:</strong></td><td>{{ req.service.name }}</td></tr>
+                <tr><td><strong>Описание:</strong></td><td>{{ req.service.description|default:"Нет описания" }}</td></tr>
+                <tr><td><strong>Срок:</strong></td><td>{{ req.service.default_deadline }} дн.</td></tr>
+                <tr><td><strong>Стоимость (физ.):</strong></td><td>{{ req.service.price_individual }} руб.</td></tr>
+                <tr><td><strong>Стоимость (юр.):</strong></td><td>{{ req.service.price_organization }} руб.</td></tr>
+            </table>
+        </div>
+
+        {% if req.service.required_documents.exists %}
+        <div class="card mt-15">
+            <h2>Необходимые документы</h2>
             <ul style="list-style: none; padding: 0;">
-                {% for task in req.tasks.all %}
-                <li style="padding: 10px 0; border-bottom: 1px solid var(--gray-100);">
-                    <strong>{{ task.title }}</strong> {% if task.completed %}✅{% endif %}
-                    <br><small style="color: var(--gray-500);">Срок: {{ task.due_date|date:"d.m.Y" }}</small>
+                {% for doc in req.service.required_documents.all %}
+                <li style="padding: 8px 0; border-bottom: 1px solid var(--gray-100);">
+                    {% if doc.is_required %}
+                    <span style="color: var(--danger);">⚠️</span>
+                    {% else %}
+                    <span style="color: var(--gray-400);">ℹ️</span>
+                    {% endif %}
+                    {{ doc.name }}
+                    <span style="font-size: 11px; color: var(--gray-400);">
+                        ({{ doc.is_required|yesno:"обязательный,дополнительный" }})
+                    </span>
                 </li>
                 {% endfor %}
             </ul>
-            {% else %}
-            <p class="text-gray">Нет задач</p>
-            {% endif %}
-            <a href="{% url 'task_create_for_request' req.pk %}" class="btn btn-primary btn-sm mt-10">Добавить задачу</a>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

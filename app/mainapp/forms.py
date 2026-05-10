@@ -1,35 +1,18 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from .models import (
-    User, Client, ServiceRequest, Invoice,
+    User, ServiceRequest, Invoice,
     Service, RequiredDocument, RequestDocument
 )
 
 
 class CustomUserCreationForm(UserCreationForm):
     """Форма регистрации с выбором типа клиента"""
+
     client_type = forms.ChoiceField(
-        choices=Client.TYPE_CHOICES,
+        choices=[('', 'Выберите тип')] + list(User.CLIENT_TYPE_CHOICES)[1:],
         label='Тип клиента',
         widget=forms.RadioSelect
-    )
-    full_name = forms.CharField(
-        max_length=255,
-        label='ФИО',
-        widget=forms.TextInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Иванов Иван Иванович',
-            'id': 'id_full_name'
-        })
-    )
-    phone = forms.CharField(
-        max_length=20,
-        label='Телефон',
-        widget=forms.TextInput(attrs={
-            'class': 'form-control',
-            'placeholder': '+7 (999) 123-45-67',
-            'id': 'id_phone'
-        })
     )
 
     # Поля для юридических лиц
@@ -66,12 +49,22 @@ class CustomUserCreationForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ['email', 'password1', 'password2']
+        fields = ['email', 'full_name', 'phone', 'password1', 'password2']
         widgets = {
             'email': forms.EmailInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'example@mail.ru',
                 'id': 'id_email'
+            }),
+            'full_name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Иванов Иван Иванович',
+                'id': 'id_full_name'
+            }),
+            'phone': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '+7 (999) 123-45-67',
+                'id': 'id_phone'
             }),
             'password1': forms.PasswordInput(attrs={
                 'class': 'form-control',
@@ -85,14 +78,20 @@ class CustomUserCreationForm(UserCreationForm):
             }),
         }
         labels = {
-            'email': 'Email',
-            'password1': 'Пароль',
-            'password2': 'Подтверждение пароля'
+            'email': 'Email *',
+            'full_name': 'ФИО/Наименование *',
+            'phone': 'Телефон *',
+            'password1': 'Пароль *',
+            'password2': 'Подтверждение пароля *'
         }
 
     def clean(self):
         cleaned_data = super().clean()
         client_type = cleaned_data.get('client_type')
+
+        if not client_type:
+            self.add_error('client_type', 'Выберите тип клиента')
+            return cleaned_data
 
         if client_type == 'organization':
             inn = cleaned_data.get('inn')
@@ -101,8 +100,14 @@ class CustomUserCreationForm(UserCreationForm):
 
             if not inn:
                 self.add_error('inn', 'ИНН обязателен для юридических лиц')
+            elif len(inn) not in [10, 12]:
+                self.add_error('inn', 'ИНН должен содержать 10 или 12 цифр')
+
             if not kpp:
                 self.add_error('kpp', 'КПП обязателен для юридических лиц')
+            elif len(kpp) != 9:
+                self.add_error('kpp', 'КПП должен содержать 9 цифр')
+
             if not legal_address:
                 self.add_error('legal_address', 'Юридический адрес обязателен для юридических лиц')
 
@@ -112,14 +117,27 @@ class CustomUserCreationForm(UserCreationForm):
 class ServiceRequestForm(forms.ModelForm):
     """Форма создания заявки"""
 
+    comment = forms.CharField(
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'rows': 4,
+            'placeholder': 'Опишите дополнительную информацию по заявке...'
+        }),
+        required=False,
+        label='Комментарий к заявке'
+    )
+
     class Meta:
         model = ServiceRequest
         fields = ['service']
+        widgets = {
+            'service': forms.Select(attrs={
+                'class': 'form-control',
+                'id': 'id_service'
+            })
+        }
         labels = {
             'service': 'Выберите услугу'
-        }
-        widgets = {
-            'service': forms.Select(attrs={'class': 'form-control'})
         }
 
 
