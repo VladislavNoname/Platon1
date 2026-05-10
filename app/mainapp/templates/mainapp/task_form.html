@@ -1,10 +1,10 @@
 {% extends 'mainapp/base.html' %}
 
-{% block title %}Новая задача - Platon CRM{% endblock %}
+{% block title %}Новая задача — Platon CRM{% endblock %}
 
 {% block content %}
-<div style="max-width: 600px; margin: 0 auto;">
-    <h1>Создание задачи</h1>
+<div style="max-width: 640px; margin: 0 auto;">
+    <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 20px;">Создание задачи</h1>
 
     <div class="card">
         <form method="post">
@@ -39,11 +39,9 @@
             <input type="hidden" name="request_id" value="{{ request_id }}">
             {% endif %}
 
-            <div style="display: flex; gap: 10px;">
-                <button type="submit" class="btn btn-blue" style="padding: 12px 30px; font-size: 16px; cursor: pointer;">
-                    ✅ Создать задачу
-                </button>
-                <a href="{% url 'dashboard' %}" class="btn btn-gray">Отмена</a>
+            <div class="flex-between gap-10 mt-15">
+                <button type="submit" class="btn btn-primary">✅ Создать задачу</button>
+                <a href="{% url 'dashboard' %}" class="btn btn-secondary">Отмена</a>
             </div>
         </form>
     </div>

@@ -1,16 +1,17 @@
 {% extends 'mainapp/base.html' %}
-{% block title %}Заявки - Platon CRM{% endblock %}
+{% block title %}Заявки — Platon CRM{% endblock %}
 {% block content %}
 <div class="flex-between mb-15">
-    <h1>Заявки</h1>
+    <h1 style="font-size: 22px; font-weight: 700;">Заявки</h1>
     {% if user.role == 'client' %}
-    <a href="{% url 'request_create' %}" class="btn btn-blue">Новая заявка</a>
+    <a href="{% url 'request_create' %}" class="btn btn-primary">Новая заявка</a>
     {% endif %}
 </div>
+
 <div class="card">
-    <form method="get" class="mb-15 flex-between gap-10">
-        <div style="display: flex; gap: 10px; width: 100%;">
-            <select name="status">
+    <form method="get" class="flex-between gap-10 mb-15" style="flex-wrap: wrap;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <select name="status" class="form-control" style="width: auto; min-width: 160px;">
                 <option value="">Все статусы</option>
                 <option value="new" {% if request.GET.status == 'new' %}selected{% endif %}>Новая</option>
                 <option value="in_progress" {% if request.GET.status == 'in_progress' %}selected{% endif %}>В работе</option>
@@ -18,7 +19,7 @@
                 <option value="completed" {% if request.GET.status == 'completed' %}selected{% endif %}>Выполнена</option>
                 <option value="rejected" {% if request.GET.status == 'rejected' %}selected{% endif %}>Отклонена</option>
             </select>
-            <select name="priority">
+            <select name="priority" class="form-control" style="width: auto; min-width: 160px;">
                 <option value="">Все приоритеты</option>
                 <option value="low" {% if request.GET.priority == 'low' %}selected{% endif %}>Низкий</option>
                 <option value="medium" {% if request.GET.priority == 'medium' %}selected{% endif %}>Средний</option>
@@ -27,10 +28,11 @@
             </select>
         </div>
         <div class="flex-between gap-10">
-            <button type="submit" class="btn btn-blue">Применить</button>
-            <a href="{% url 'request_list' %}" class="btn btn-gray">Сбросить</a>
+            <button type="submit" class="btn btn-primary">Применить</button>
+            <a href="{% url 'request_list' %}" class="btn btn-secondary">Сбросить</a>
         </div>
     </form>
+
     <table>
         <thead>
             <tr>
@@ -41,7 +43,7 @@
                 <th>Статус</th>
                 <th>Менеджер</th>
                 <th>Дата</th>
-                <th>Действия</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -55,20 +57,22 @@
                 <td>{{ req.manager.get_full_name|default:"—" }}</td>
                 <td>{{ req.created_at|date:"d.m.Y" }}</td>
                 <td>
-                    <a href="{% url 'request_detail' req.pk %}" class="btn btn-blue btn-sm">🔍</a>
-                    {% if user.role == 'manager' or user.role == 'admin' %}
-                        {% if req.status == 'new' %}
-                        <a href="{% url 'change_status' req.pk 'in_progress' %}" class="btn btn-orange btn-sm" title="В работу">▶</a>
-                        {% elif req.status == 'in_progress' %}
-                        <a href="{% url 'change_status' req.pk 'on_approval' %}" class="btn btn-orange btn-sm" title="На согласование">📋</a>
-                        <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-green btn-sm" title="Выполнена">✅</a>
+                    <div class="flex-between gap-10">
+                        <a href="{% url 'request_detail' req.pk %}" class="btn btn-primary btn-sm">🔍</a>
+                        {% if user.role == 'manager' or user.role == 'admin' %}
+                            {% if req.status == 'new' %}
+                            <a href="{% url 'change_status' req.pk 'in_progress' %}" class="btn btn-warning btn-sm">▶</a>
+                            {% elif req.status == 'in_progress' %}
+                            <a href="{% url 'change_status' req.pk 'on_approval' %}" class="btn btn-warning btn-sm">📋</a>
+                            <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success btn-sm">✅</a>
+                            {% endif %}
                         {% endif %}
-                    {% endif %}
+                    </div>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8" class="text-center">Заявки не найдены</td>
+                <td colspan="8" class="text-center text-gray">Заявки не найдены</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -1,38 +1,286 @@
-{% extends 'mainapp/base.html' %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация — Platon CRM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+        }
 
-{% block title %}Регистрация - Platon CRM{% endblock %}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-{% block content %}
-<div style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
-    <div class="card" style="width: 100%; max-width: 500px;">
-        <h2>Регистрация</h2>
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #6366f1 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .register-container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .register-header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .register-header .icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+
+        .register-header h1 {
+            color: var(--gray-800);
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .register-header p {
+            color: var(--gray-500);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--gray-700);
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 11px 14px;
+            border: 2px solid var(--gray-300);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+            outline: none;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            margin-top: 8px;
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 400;
+            cursor: pointer;
+        }
+
+        .btn-register {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+
+        .btn-register:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .alert-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .alert-success {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .links {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            color: var(--gray-500);
+        }
+
+        .links a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <div class="register-header">
+            <div class="icon">✨</div>
+            <h1>Регистрация</h1>
+            <p>Создайте аккаунт в Platon CRM</p>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
         <form method="post">
             {% csrf_token %}
+
             <div class="form-group">
-                <label for="email">Email *</label>
-                <input type="email" name="email" id="email" class="form-control" required>
+                <label for="id_email">Email *</label>
+                {{ form.email }}
+                {% if form.email.errors %}
+                    <div class="alert alert-error">{{ form.email.errors }}</div>
+                {% endif %}
             </div>
+
             <div class="form-group">
-                <label for="full_name">Полное имя *</label>
-                <input type="text" name="full_name" id="full_name" class="form-control" required>
+                <label for="id_full_name">Полное имя *</label>
+                {{ form.full_name }}
+                {% if form.full_name.errors %}
+                    <div class="alert alert-error">{{ form.full_name.errors }}</div>
+                {% endif %}
             </div>
+
             <div class="form-group">
-                <label for="phone">Телефон</label>
-                <input type="text" name="phone" id="phone" class="form-control">
+                <label for="id_phone">Телефон *</label>
+                {{ form.phone }}
+                {% if form.phone.errors %}
+                    <div class="alert alert-error">{{ form.phone.errors }}</div>
+                {% endif %}
             </div>
+
             <div class="form-group">
-                <label for="password">Пароль *</label>
-                <input type="password" name="password" id="password" class="form-control" required minlength="6">
+                <label for="id_password1">Пароль *</label>
+                {{ form.password1 }}
+                {% if form.password1.errors %}
+                    <div class="alert alert-error">{{ form.password1.errors }}</div>
+                {% endif %}
+                <small style="color: var(--gray-500); font-size: 12px;">
+                    Минимум 8 символов, не должен быть слишком простым
+                </small>
             </div>
+
             <div class="form-group">
-                <label for="password_confirm">Подтверждение пароля *</label>
-                <input type="password" name="password_confirm" id="password_confirm" class="form-control" required>
+                <label for="id_password2">Подтверждение пароля *</label>
+                {{ form.password2 }}
+                {% if form.password2.errors %}
+                    <div class="alert alert-error">{{ form.password2.errors }}</div>
+                {% endif %}
             </div>
-            <button type="submit" class="btn btn-blue" style="width: 100%;">Зарегистрироваться</button>
+
+            <div class="form-group">
+                <label>Тип клиента *</label>
+                <div class="radio-group">
+                    {% for radio in form.client_type %}
+                        <label>
+                            {{ radio.tag }}
+                            {{ radio.choice_label }}
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div id="organization-fields" style="display: none;">
+                <div class="form-group">
+                    <label for="id_inn">ИНН</label>
+                    {{ form.inn }}
+                </div>
+                <div class="form-group">
+                    <label for="id_kpp">КПП</label>
+                    {{ form.kpp }}
+                </div>
+                <div class="form-group">
+                    <label for="id_legal_address">Юридический адрес</label>
+                    {{ form.legal_address }}
+                </div>
+            </div>
+
+            <button type="submit" class="btn-register">Зарегистрироваться</button>
         </form>
-        <div class="text-center mt-15">
-            Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a>
+
+        <div class="links">
+            Уже есть аккаунт? <a href="/login/">Войти</a>
         </div>
     </div>
-</div>
-{% endblock %}
+
+    <script>
+        // Показываем/скрываем поля для юрлиц
+        document.addEventListener('DOMContentLoaded', function() {
+            const clientTypeRadios = document.querySelectorAll('input[name="client_type"]');
+            const orgFields = document.getElementById('organization-fields');
+
+            function toggleOrgFields() {
+                const selected = document.querySelector('input[name="client_type"]:checked');
+                if (selected && selected.value === 'organization') {
+                    orgFields.style.display = 'block';
+                } else {
+                    orgFields.style.display = 'none';
+                }
+            }
+
+            clientTypeRadios.forEach(radio => {
+                radio.addEventListener('change', toggleOrgFields);
+            });
+
+            // Проверяем при загрузке
+            toggleOrgFields();
+        });
+    </script>
+</body>
+</html>
