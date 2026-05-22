@@ -65,8 +65,6 @@
         <p style="font-size: 24px; font-weight: 700; color: var(--primary);">{{ total_invoices|floatformat:2 }} ₽</p>
         <p style="font-size: 14px; color: var(--gray-500); margin-top: 12px;">Оплачено:</p>
         <p style="font-size: 24px; font-weight: 700; color: var(--success);">{{ paid_invoices|floatformat:2 }} ₽</p>
-        <p style="font-size: 14px; color: var(--gray-500); margin-top: 12px;">Задолженность:</p>
-        <p style="font-size: 24px; font-weight: 700; color: var(--danger);">{{ total_invoices|add:paid_invoices|floatformat:2|slice:"1:" }} ₽</p>
     </div>
 </div>
 {% endblock %}

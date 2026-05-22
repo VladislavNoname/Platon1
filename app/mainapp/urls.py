@@ -23,8 +23,6 @@ urlpatterns = [
     # Счета
     path('requests/<int:pk>/create-invoice/',
          views.create_invoice, name='create_invoice'),
-    path('invoices/<int:pk>/upload-proof/',
-         views.upload_payment_proof, name='upload_payment_proof'),
     path('invoices/<int:pk>/mark-paid/',
          views.mark_payment, name='mark_payment'),
 

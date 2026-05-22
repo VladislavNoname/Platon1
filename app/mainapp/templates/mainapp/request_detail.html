@@ -43,7 +43,7 @@
 
             {% if user.role == 'manager' and req.manager == user %}
             <div class="mt-15 flex-between gap-10" style="flex-wrap: wrap;">
-                {% if req.status == 'new' or req.status == 'in_progress' %}
+                {% if req.status == 'new' %}
                 <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-warning">
@@ -61,7 +61,7 @@
                 <form method="post" action="{% url 'mark_payment' req.invoices.first.pk %}" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-success">
-                        <i class="fas fa-money-bill"></i> Подтвердить оплату
+                        <i class="fas fa-money-bill"></i> Отметить оплату
                     </button>
                 </form>
                 <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
@@ -144,8 +144,8 @@
                         <tr>
                             <td>{{ doc.required_document.name }}</td>
                             <td>
-                                <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
-                                    <i class="fas fa-file-pdf"></i> Скачать PDF
+                                <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank" download="{{ doc.file.name }}">
+                                    <i class="fas fa-download"></i> Скачать PDF
                                 </a>
                             </td>
                             <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
@@ -185,20 +185,10 @@
                             </td>
                             <td>{{ invoice.paid_at|date:"d.m.Y H:i"|default:"—" }}</td>
                             <td>
-                                {% if not invoice.is_paid %}
-                                    {% if user.role == 'client' %}
-                                    <form method="post" action="{% url 'upload_payment_proof' invoice.pk %}" enctype="multipart/form-data" style="display: flex; gap: 5px;">
-                                        {% csrf_token %}
-                                        <input type="file" name="payment_proof" accept=".pdf" required class="form-control" style="width: auto;">
-                                        <button type="submit" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-upload"></i> Загрузить чек
-                                        </button>
-                                    </form>
-                                    {% elif user.role == 'manager' %}
-                                    <a href="{% url 'mark_payment' invoice.pk %}" class="btn btn-sm btn-success">
-                                        <i class="fas fa-check"></i> Подтвердить оплату
-                                    </a>
-                                    {% endif %}
+                                {% if not invoice.is_paid and user.role == 'manager' and req.manager == user %}
+                                <a href="{% url 'mark_payment' invoice.pk %}" class="btn btn-sm btn-success">
+                                    <i class="fas fa-check"></i> Отметить оплату
+                                </a>
                                 {% endif %}
                             </td>
                         </tr>
@@ -264,15 +254,8 @@
             <ul style="list-style: none; padding: 0;">
                 {% for doc in req.service.required_documents.all %}
                 <li style="padding: 8px 0; border-bottom: 1px solid var(--gray-100);">
-                    {% if doc.is_required %}
-                    <span style="color: var(--danger);">⚠️</span>
-                    {% else %}
-                    <span style="color: var(--gray-400);">ℹ️</span>
-                    {% endif %}
+                    <span style="color: var(--danger);">📄</span>
                     {{ doc.name }}
-                    <span style="font-size: 11px; color: var(--gray-400);">
-                        ({{ doc.is_required|yesno:"обязательный,дополнительный" }})
-                    </span>
                 </li>
                 {% endfor %}
             </ul>

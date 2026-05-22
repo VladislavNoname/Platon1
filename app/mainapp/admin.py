@@ -35,7 +35,7 @@ class UserAdmin(BaseUserAdmin):
 class RequiredDocumentInline(admin.TabularInline):
     model = RequiredDocument
     extra = 1
-    fields = ['name', 'is_required', 'order']
+    fields = ['name', 'order']
 
 
 @admin.register(Service)
@@ -89,9 +89,9 @@ class RequestDocumentAdmin(admin.ModelAdmin):
 
 @admin.register(RequiredDocument)
 class RequiredDocumentAdmin(admin.ModelAdmin):
-    list_display = ['name', 'service', 'is_required', 'order']
-    list_filter = ['is_required', 'service']
-    list_editable = ['is_required', 'order']
+    list_display = ['name', 'service', 'order']
+    list_filter = ['service']
+    list_editable = ['order']
     search_fields = ['name', 'service__name']
 
 

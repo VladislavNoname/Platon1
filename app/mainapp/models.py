@@ -125,12 +125,11 @@ class Service(models.Model):
 
 
 class RequiredDocument(models.Model):
-    """Обязательные документы для услуги"""
+    """Обязательные документы для услуги - все документы обязательные"""
     service = models.ForeignKey(Service, on_delete=models.CASCADE,
                                 related_name='required_documents',
                                 verbose_name='Услуга')
     name = models.CharField(max_length=255, verbose_name='Название документа')
-    is_required = models.BooleanField(default=True, verbose_name='Обязательный')
     order = models.PositiveIntegerField(default=0, verbose_name='Порядок')
 
     class Meta:
@@ -139,7 +138,7 @@ class RequiredDocument(models.Model):
         ordering = ['order']
 
     def __str__(self):
-        return f"{self.name} ({'Обязательный' if self.is_required else 'Дополнительный'})"
+        return self.name
 
 
 class ServiceRequest(models.Model):
@@ -184,7 +183,7 @@ class ServiceRequest(models.Model):
         return f"{self.number} - {self.service.name}"
 
     def get_required_documents(self):
-        return self.service.required_documents.filter(is_required=True)
+        return self.service.required_documents.all()  # все документы обязательные
 
     def get_missing_documents(self):
         required_docs = self.get_required_documents()

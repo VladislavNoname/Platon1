@@ -7,6 +7,8 @@ from django.utils import timezone
 from django.core.mail import send_mail
 from django.conf import settings
 from datetime import timedelta
+from django.http import HttpResponse, Http404
+import os
 
 from .models import (
     User, Service, ServiceRequest,
@@ -378,7 +380,6 @@ def upload_document(request, pk):
     if request.method == 'POST':
         required_doc_id = request.POST.get('required_document')
         file = request.FILES.get('file')
-        payment_proof = request.POST.get('payment_proof', False)
 
         if file and required_doc_id:
             if file.size > 10 * 1024 * 1024:
@@ -389,34 +390,18 @@ def upload_document(request, pk):
                 messages.error(request, 'Допустимы только PDF файлы')
                 return redirect('request_detail', pk=pk)
 
-            if file.content_type != 'application/pdf':
-                messages.error(request, 'Файл должен быть формата PDF')
-                return redirect('request_detail', pk=pk)
-
             required_doc = get_object_or_404(RequiredDocument, pk=required_doc_id)
 
             if required_doc.service != service_request.service:
                 messages.error(request, 'Этот тип документа не относится к выбранной услуге')
                 return redirect('request_detail', pk=pk)
 
-            # Если это подтверждение оплаты
-            if payment_proof:
-                invoice = get_object_or_404(Invoice, pk=required_doc_id)
-                invoice.payment_proof = file
-                invoice.save()
-                messages.success(request, 'Подтверждение оплаты загружено')
-            else:
-                # Проверяем, что документ обязательный
-                if not required_doc.is_required:
-                    messages.error(request, 'Дополнительные документы не принимаются')
-                    return redirect('request_detail', pk=pk)
-
-                RequestDocument.objects.create(
-                    request=service_request,
-                    required_document=required_doc,
-                    file=file
-                )
-                messages.success(request, 'Документ загружен')
+            RequestDocument.objects.create(
+                request=service_request,
+                required_document=required_doc,
+                file=file
+            )
+            messages.success(request, 'Документ загружен')
         else:
             messages.error(request, 'Выберите тип документа и файл')
 
@@ -489,57 +474,17 @@ def create_invoice(request, pk):
 
 
 @login_required
-def upload_payment_proof(request, pk):
-    """Загрузка подтверждения оплаты клиентом"""
-    if request.user.role != 'client':
-        messages.error(request, 'Только клиент может загрузить подтверждение оплаты')
-        return redirect('request_detail', pk=pk)
-
-    invoice = get_object_or_404(Invoice, pk=pk)
-
-    if invoice.request.client != request.user:
-        messages.error(request, 'Доступ запрещен')
-        return redirect('dashboard')
-
-    if request.method == 'POST' and request.FILES.get('payment_proof'):
-        file = request.FILES['payment_proof']
-
-        if file.size > 10 * 1024 * 1024:
-            messages.error(request, 'Размер файла не должен превышать 10 МБ')
-            return redirect('request_detail', pk=invoice.request.pk)
-
-        if not file.name.lower().endswith('.pdf'):
-            messages.error(request, 'Допустимы только PDF файлы')
-            return redirect('request_detail', pk=invoice.request.pk)
-
-        invoice.payment_proof = file
-        invoice.save()
-
-        # Уведомление менеджеру
-        if invoice.request.manager:
-            Notification.objects.create(
-                user=invoice.request.manager,
-                notification_type='payment_required',
-                message=f'Клиент загрузил подтверждение оплаты по счету {invoice.number}'
-            )
-
-        messages.success(request, 'Подтверждение оплаты загружено. Менеджер проверит и подтвердит оплату.')
-
-    return redirect('request_detail', pk=invoice.request.pk)
-
-
-@login_required
 def mark_payment(request, pk):
-    """Отметка об оплате (для менеджера)"""
+    """Отметка об оплате (для менеджера) - клиент не загружает чек"""
     if request.user.role not in ['manager', 'admin']:
         messages.error(request, 'Недостаточно прав')
         return redirect('request_detail', pk=pk)
 
     invoice = get_object_or_404(Invoice, pk=pk)
 
-    # Проверяем, есть ли подтверждение оплаты от клиента
-    if not invoice.payment_proof and request.user.role != 'admin':
-        messages.error(request, 'Клиент еще не загрузил подтверждение оплаты')
+    # Проверяем, что счет не оплачен
+    if invoice.is_paid:
+        messages.warning(request, 'Этот счет уже оплачен')
         return redirect('request_detail', pk=invoice.request.pk)
 
     invoice.is_paid = True
@@ -561,7 +506,7 @@ def mark_payment(request, pk):
         field_name='status',
         old_value=old_status,
         new_value='В работе',
-        comment='Оплата подтверждена'
+        comment=f'Оплата по счету {invoice.number} подтверждена'
     )
 
     Notification.objects.create(
