@@ -17,10 +17,14 @@ urlpatterns = [
          views.request_change_status, name='change_status'),
     path('requests/<int:pk>/upload-document/',
          views.upload_document, name='upload_document'),
+    path('requests/<int:pk>/mark-completed/',
+         views.mark_completed, name='mark_completed'),
 
     # Счета
     path('requests/<int:pk>/create-invoice/',
          views.create_invoice, name='create_invoice'),
+    path('invoices/<int:pk>/upload-proof/',
+         views.upload_payment_proof, name='upload_payment_proof'),
     path('invoices/<int:pk>/mark-paid/',
          views.mark_payment, name='mark_payment'),
 

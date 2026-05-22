@@ -14,29 +14,29 @@
                 <span class="status-badge status-{{ req.status }}">{{ req.get_status_display }}</span>
             </div>
 
-            <table>
-                <tr><td><strong>Номер заявки:</strong></td><td>{{ req.number }}</td></tr>
-                <tr><td><strong>Услуга:</strong></td><td>{{ req.service.name }}</td></tr>
-                <tr><td><strong>Клиент:</strong></td><td>{{ req.client.full_name }}</td></tr>
-                <tr><td><strong>Email клиента:</strong></td><td>{{ req.client.email }}</td></tr>
-                <tr><td><strong>Телефон клиента:</strong></td><td>{{ req.client.phone }}</td></tr>
-                <tr><td><strong>Стоимость:</strong></td><td>{{ req.price }} руб.</td></tr>
-                <tr><td><strong>Срок исполнения:</strong></td><td>{{ req.deadline|date:"d.m.Y" }}</td></tr>
-                <tr><td><strong>Менеджер:</strong></td><td>{{ req.manager.full_name|default:"Не назначен" }}</td></tr>
-                <tr><td><strong>Дата создания:</strong></td><td>{{ req.created_at|date:"d.m.Y H:i" }}</td></tr>
-                <tr><td><strong>Последнее обновление:</strong></td><td>{{ req.updated_at|date:"d.m.Y H:i" }}</td></tr>
+            <table style="width: 100%;">
+                <tr><td style="padding: 8px 0;"><strong>Номер заявки:</strong></td><td>{{ req.number }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Услуга:</strong></td><td>{{ req.service.name }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Клиент:</strong></td><td>{{ req.client.full_name }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Email клиента:</strong></td><td>{{ req.client.email }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Телефон клиента:</strong></td><td>{{ req.client.phone }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Стоимость:</strong></td><td>{{ req.price }} руб.</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Срок исполнения:</strong></td><td>{{ req.deadline|date:"d.m.Y" }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Менеджер:</strong></td><td>{{ req.manager.full_name|default:"Не назначен" }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Дата создания:</strong></td><td>{{ req.created_at|date:"d.m.Y H:i" }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Последнее обновление:</strong></td><td>{{ req.updated_at|date:"d.m.Y H:i" }}</td></tr>
                 {% if req.comment %}
-                <tr><td><strong>Комментарий клиента:</strong></td><td>{{ req.comment }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Комментарий клиента:</strong></td><td>{{ req.comment }}</td></tr>
                 {% endif %}
                 {% if req.rejection_reason %}
-                <tr><td><strong>Причина отклонения:</strong></td><td style="color: var(--danger);">{{ req.rejection_reason }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Причина отклонения:</strong></td><td style="color: var(--danger);">{{ req.rejection_reason }}</td></tr>
                 {% endif %}
             </table>
 
             {% if user.role == 'manager' and req.status == 'new' and not req.manager %}
             <div class="mt-15">
                 <a href="{% url 'request_take' req.pk %}" class="btn btn-success btn-lg">
-                    🤝 Взять заявку в работу
+                    <i class="fas fa-handshake"></i> Взять заявку в работу
                 </a>
             </div>
             {% endif %}
@@ -47,7 +47,21 @@
                 <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-warning">
-                        📄 Создать счет на оплату
+                        <i class="fas fa-file-invoice"></i> Создать счет на оплату
+                    </button>
+                </form>
+                <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
+                    {% csrf_token %}
+                    <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-times"></i> Отклонить
+                    </button>
+                </form>
+                {% elif req.status == 'awaiting_payment' %}
+                <form method="post" action="{% url 'mark_payment' req.invoices.first.pk %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-money-bill"></i> Подтвердить оплату
                     </button>
                 </form>
                 <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
@@ -55,18 +69,9 @@
                     <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
                     <button type="submit" class="btn btn-danger">Отклонить</button>
                 </form>
-                {% elif req.status == 'awaiting_payment' %}
-                <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">
-                    💰 Отметить оплату
-                </a>
-                <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="text" name="reason" placeholder="Причина отклонения" class="form-control" style="width: auto; display: inline-block; margin-right: 10px;">
-                    <button type="submit" class="btn btn-danger">Отклонить</button>
-                </form>
                 {% elif req.status == 'in_progress' %}
-                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">
-                    ✅ Отметить как выполненную
+                <a href="{% url 'mark_completed' req.pk %}" class="btn btn-success" onclick="return confirm('Отметить заявку как выполненную?')">
+                    <i class="fas fa-check-circle"></i> Отметить как выполненную
                 </a>
                 <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
                     {% csrf_token %}
@@ -82,20 +87,14 @@
                 {% if req.status == 'new' or req.status == 'in_progress' %}
                 <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-warning">
-                        📄 Создать счет на оплату
-                    </button>
+                    <button type="submit" class="btn btn-warning">Создать счет</button>
                 </form>
                 <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
                 {% elif req.status == 'awaiting_payment' %}
-                <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">
-                    💰 Отметить оплату
-                </a>
+                <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">Отметить оплату</a>
                 <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
                 {% elif req.status == 'in_progress' %}
-                <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success">
-                    ✅ Отметить как выполненную
-                </a>
+                <a href="{% url 'mark_completed' req.pk %}" class="btn btn-success">Выполнена</a>
                 <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
                 {% endif %}
             </div>
@@ -119,7 +118,9 @@
                         <span class="status-badge" style="background: var(--danger-light); color: #991b1b; font-size: 11px;">обязательный</span>
                     </div>
                     <input type="file" name="file" accept=".pdf" required class="form-control" style="width: auto; flex: 2;">
-                    <button type="submit" class="btn btn-primary btn-sm">📎 Загрузить</button>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-upload"></i> Загрузить
+                    </button>
                 </form>
             </div>
             {% endfor %}
@@ -129,66 +130,82 @@
         {% if documents %}
         <div class="card mt-15">
             <h2>Загруженные документы</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Документ</th>
-                        <th>Файл</th>
-                        <th>Дата загрузки</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for doc in documents %}
-                    <tr>
-                        <td>{{ doc.required_document.name }}</td>
-                        <td>
-                            <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
-                                📄 {{ doc.file.name|slice:"20:" }}
-                            </a>
-                        </td>
-                        <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Документ</th>
+                            <th>Файл</th>
+                            <th>Дата загрузки</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>{{ doc.required_document.name }}</td>
+                            <td>
+                                <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
+                                    <i class="fas fa-file-pdf"></i> Скачать PDF
+                                </a>
+                            </td>
+                            <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% endif %}
 
         {% if invoices %}
         <div class="card mt-15">
             <h2>Счета</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Номер счета</th>
-                        <th>Сумма</th>
-                        <th>Статус</th>
-                        <th>Дата оплаты</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for invoice in invoices %}
-                    <tr>
-                        <td>{{ invoice.number }}</td>
-                        <td>{{ invoice.amount }} руб.</td>
-                        <td>
-                            {% if invoice.is_paid %}
-                            <span class="status-badge status-completed">Оплачен</span>
-                            {% else %}
-                            <span class="status-badge status-awaiting_payment">Не оплачен</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ invoice.paid_at|date:"d.m.Y H:i"|default:"—" }}</td>
-                        <td>
-                            {% if not invoice.is_paid and user.role == 'manager' %}
-                            <a href="{% url 'mark_payment' invoice.pk %}" class="btn btn-sm btn-success">Отметить оплату</a>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Номер счета</th>
+                            <th>Сумма</th>
+                            <th>Статус</th>
+                            <th>Дата оплаты</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        <tr>
+                            <td>{{ invoice.number }}</td>
+                            <td>{{ invoice.amount }} руб.</td>
+                            <td>
+                                {% if invoice.is_paid %}
+                                <span class="status-badge status-completed">Оплачен</span>
+                                {% else %}
+                                <span class="status-badge status-awaiting_payment">Не оплачен</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ invoice.paid_at|date:"d.m.Y H:i"|default:"—" }}</td>
+                            <td>
+                                {% if not invoice.is_paid %}
+                                    {% if user.role == 'client' %}
+                                    <form method="post" action="{% url 'upload_payment_proof' invoice.pk %}" enctype="multipart/form-data" style="display: flex; gap: 5px;">
+                                        {% csrf_token %}
+                                        <input type="file" name="payment_proof" accept=".pdf" required class="form-control" style="width: auto;">
+                                        <button type="submit" class="btn btn-sm btn-primary">
+                                            <i class="fas fa-upload"></i> Загрузить чек
+                                        </button>
+                                    </form>
+                                    {% elif user.role == 'manager' %}
+                                    <a href="{% url 'mark_payment' invoice.pk %}" class="btn btn-sm btn-success">
+                                        <i class="fas fa-check"></i> Подтвердить оплату
+                                    </a>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% endif %}
 
@@ -216,28 +233,28 @@
     <div>
         <div class="card">
             <h2>Информация о клиенте</h2>
-            <table>
-                <tr><td><strong>ФИО:</strong></td><td>{{ req.client.full_name }}</td></tr>
-                <tr><td><strong>Email:</strong></td><td>{{ req.client.email }}</td></tr>
-                <tr><td><strong>Телефон:</strong></td><td>{{ req.client.phone }}</td></tr>
-                <tr><td><strong>Тип:</strong></td><td>{{ req.client.get_client_type_display }}</td></tr>
+            <table style="width: 100%;">
+                <tr><td style="padding: 8px 0;"><strong>ФИО:</strong></td><td>{{ req.client.full_name }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Email:</strong></td><td>{{ req.client.email }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Телефон:</strong></td><td>{{ req.client.phone }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Тип:</strong></td><td>{{ req.client.get_client_type_display }}</td></tr>
                 {% if req.client.inn %}
-                <tr><td><strong>ИНН:</strong></td><td>{{ req.client.inn }}</td></tr>
-                <tr><td><strong>КПП:</strong></td><td>{{ req.client.kpp }}</td></tr>
-                <tr><td><strong>Юр. адрес:</strong></td><td>{{ req.client.legal_address }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>ИНН:</strong></td><td>{{ req.client.inn }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>КПП:</strong></td><td>{{ req.client.kpp }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Юр. адрес:</strong></td><td>{{ req.client.legal_address }}</td></tr>
                 {% endif %}
-                <tr><td><strong>Менеджер:</strong></td><td>{{ req.client.manager.full_name|default:"Не назначен" }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Менеджер:</strong></td><td>{{ req.client.manager.full_name|default:"Не назначен" }}</td></tr>
             </table>
         </div>
 
         <div class="card mt-15">
             <h2>Информация об услуге</h2>
-            <table>
-                <tr><td><strong>Название:</strong></td><td>{{ req.service.name }}</td></tr>
-                <tr><td><strong>Описание:</strong></td><td>{{ req.service.description|default:"Нет описания" }}</td></tr>
-                <tr><td><strong>Срок:</strong></td><td>{{ req.service.default_deadline }} дн.</td></tr>
-                <tr><td><strong>Стоимость (физ.):</strong></td><td>{{ req.service.price_individual }} руб.</td></tr>
-                <tr><td><strong>Стоимость (юр.):</strong></td><td>{{ req.service.price_organization }} руб.</td></tr>
+            <table style="width: 100%;">
+                <tr><td style="padding: 8px 0;"><strong>Название:</strong></td><td>{{ req.service.name }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Описание:</strong></td><td>{{ req.service.description|default:"Нет описания" }}</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Срок:</strong></td><td>{{ req.service.default_deadline }} дн.</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Стоимость (физ.):</strong></td><td>{{ req.service.price_individual }} руб.</td></tr>
+                <tr><td style="padding: 8px 0;"><strong>Стоимость (юр.):</strong></td><td>{{ req.service.price_organization }} руб.</td></tr>
             </table>
         </div>
 

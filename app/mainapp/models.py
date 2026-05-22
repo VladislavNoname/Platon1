@@ -104,6 +104,8 @@ class Service(models.Model):
                                              verbose_name='Стоимость для юр. лиц')
     default_deadline = models.PositiveIntegerField(default=5, verbose_name='Срок исполнения (дни)')
     is_active = models.BooleanField(default=True, verbose_name='Активна')
+    for_individuals = models.BooleanField(default=True, verbose_name='Доступна для физ. лиц')
+    for_organizations = models.BooleanField(default=True, verbose_name='Доступна для юр. лиц')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
 
@@ -113,7 +115,7 @@ class Service(models.Model):
         ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} ({'Физ: ' + str(self.price_individual) + ' руб.' if self.price_individual > 0 else ''}{'Юр: ' + str(self.price_organization) + ' руб.' if self.price_organization > 0 else ''})"
+        return f"{self.name}"
 
     def get_price_for_client(self, client):
         """Возвращает цену в зависимости от типа клиента"""
@@ -243,6 +245,7 @@ class Invoice(models.Model):
     is_paid = models.BooleanField(default=False, verbose_name='Оплачен')
     paid_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата оплаты')
     file = models.FileField(upload_to='invoices/', null=True, blank=True, verbose_name='Файл счета')
+    payment_proof = models.FileField(upload_to='payment_proofs/', null=True, blank=True, verbose_name='Подтверждение оплаты')
     created_at = models.DateTimeField(default=timezone.now, verbose_name='Дата создания')
 
     class Meta:

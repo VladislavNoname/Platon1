@@ -741,14 +741,18 @@
         /* Utilities */
         .mt-2 { margin-top: 16px; }
         .mt-3 { margin-top: 24px; }
+        .mt-15 { margin-top: 15px; }
         .mb-2 { margin-bottom: 16px; }
         .mb-3 { margin-bottom: 24px; }
+        .mb-15 { margin-bottom: 15px; }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
+        .text-gray { color: var(--gray-500); }
         .flex { display: flex; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
         .gap-2 { gap: 16px; }
         .gap-3 { gap: 24px; }
+        .gap-10 { gap: 10px; }
 
         /* Responsive */
         @media (max-width: 1024px) {
@@ -853,21 +857,23 @@
 
     <nav>
         <div class="nav">
-    <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
-        <i class="fas fa-th-large"></i> Главная
-    </a>
-    <a href="{% url 'request_list' %}" class="{% if 'request' in request.resolver_match.url_name %}active{% endif %}">
-        <i class="fas fa-tasks"></i> Заявки
-    </a>
-    <a href="{% url 'client_list' %}" class="{% if request.resolver_match.url_name == 'client_list' %}active{% endif %}">
-        <i class="fas fa-users"></i> Клиенты
-    </a>
-    {% if user.role == 'admin' %}
-    <a href="{% url 'reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">
-        <i class="fas fa-chart-bar"></i> Отчёты
-    </a>
-    {% endif %}
-</div>
+            <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                <i class="fas fa-th-large"></i> Главная
+            </a>
+            <a href="{% url 'request_list' %}" class="{% if 'request' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-tasks"></i> Заявки
+            </a>
+            {% if user.role != 'client' %}
+            <a href="{% url 'client_list' %}" class="{% if request.resolver_match.url_name == 'client_list' %}active{% endif %}">
+                <i class="fas fa-users"></i> Клиенты
+            </a>
+            {% endif %}
+            {% if user.role == 'admin' %}
+            <a href="{% url 'reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">
+                <i class="fas fa-chart-bar"></i> Отчёты
+            </a>
+            {% endif %}
+        </div>
     </nav>
 
     <div class="user-info">
@@ -914,6 +920,7 @@
             </ul>
         </div>
 
+        {% if user.role != 'client' %}
         <div class="sidebar-section">
             <div class="sidebar-title">Управление</div>
             <ul>
@@ -936,6 +943,7 @@
                 {% endif %}
             </ul>
         </div>
+        {% endif %}
     </aside>
 
     <main class="main">

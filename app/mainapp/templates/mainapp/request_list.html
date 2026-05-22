@@ -11,71 +11,58 @@
 <div class="card">
     <form method="get" class="flex-between gap-10 mb-15" style="flex-wrap: wrap;">
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <select name="status" class="form-control" style="width: auto; min-width: 160px;">
-                <option value="">Все статусы</option>
-                <option value="new" {% if request.GET.status == 'new' %}selected{% endif %}>Новая</option>
-                <option value="in_progress" {% if request.GET.status == 'in_progress' %}selected{% endif %}>В работе</option>
-                <option value="on_approval" {% if request.GET.status == 'on_approval' %}selected{% endif %}>На согласовании</option>
-                <option value="completed" {% if request.GET.status == 'completed' %}selected{% endif %}>Выполнена</option>
-                <option value="rejected" {% if request.GET.status == 'rejected' %}selected{% endif %}>Отклонена</option>
-            </select>
-            <select name="priority" class="form-control" style="width: auto; min-width: 160px;">
-                <option value="">Все приоритеты</option>
-                <option value="low" {% if request.GET.priority == 'low' %}selected{% endif %}>Низкий</option>
-                <option value="medium" {% if request.GET.priority == 'medium' %}selected{% endif %}>Средний</option>
-                <option value="high" {% if request.GET.priority == 'high' %}selected{% endif %}>Высокий</option>
-                <option value="critical" {% if request.GET.priority == 'critical' %}selected{% endif %}>Критический</option>
-            </select>
-        </div>
-        <div class="flex-between gap-10">
-            <button type="submit" class="btn btn-primary">Применить</button>
+            <input type="text" name="search" class="form-control" placeholder="Поиск по номеру или клиенту..." value="{{ request.GET.search }}" style="width: 300px;">
+            <button type="submit" class="btn btn-primary">Найти</button>
             <a href="{% url 'request_list' %}" class="btn btn-secondary">Сбросить</a>
         </div>
     </form>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Номер</th>
-                <th>Тема</th>
-                <th>Клиент</th>
-                <th>Приоритет</th>
-                <th>Статус</th>
-                <th>Менеджер</th>
-                <th>Дата</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for req in requests %}
-            <tr>
-                <td><strong>{{ req.number }}</strong></td>
-                <td>{{ req.topic }}</td>
-                <td>{{ req.client.full_name }}</td>
-                <td>{{ req.get_priority_display }}</td>
-                <td>{{ req.get_status_display }}</td>
-                <td>{{ req.manager.get_full_name|default:"—" }}</td>
-                <td>{{ req.created_at|date:"d.m.Y" }}</td>
-                <td>
-                    <div class="flex-between gap-10">
-                        <a href="{% url 'request_detail' req.pk %}" class="btn btn-primary btn-sm">🔍</a>
-                        {% if user.role == 'manager' or user.role == 'admin' %}
-                            {% if req.status == 'new' %}
-                            <a href="{% url 'change_status' req.pk 'in_progress' %}" class="btn btn-warning btn-sm">▶</a>
-                            {% elif req.status == 'in_progress' %}
-                            <a href="{% url 'change_status' req.pk 'on_approval' %}" class="btn btn-warning btn-sm">📋</a>
-                            <a href="{% url 'change_status' req.pk 'completed' %}" class="btn btn-success btn-sm">✅</a>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Номер</th>
+                    <th>Услуга</th>
+                    <th>Клиент</th>
+                    <th>Статус</th>
+                    <th>Менеджер</th>
+                    <th>Дата</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr>
+                    <td><strong>{{ req.number }}</strong></td>
+                    <td>{{ req.service.name }}</td>
+                    <td>{{ req.client.full_name }}</td>
+                    <td>
+                        <span class="status-badge status-{{ req.status }}">
+                            {{ req.get_status_display }}
+                        </span>
+                    </td>
+                    <td>{{ req.manager.get_full_name|default:"—" }}</td>
+                    <td>{{ req.created_at|date:"d.m.Y" }}</td>
+                    <td>
+                        <div class="flex-between gap-10">
+                            <a href="{% url 'request_detail' req.pk %}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-eye"></i> Открыть
+                            </a>
+                            {% if user.role == 'manager' and req.status == 'in_progress' %}
+                            <a href="{% url 'mark_completed' req.pk %}" class="btn btn-success btn-sm" onclick="return confirm('Отметить заявку как выполненную?')">
+                                <i class="fas fa-check"></i> Выполнена
+                            </a>
                             {% endif %}
-                        {% endif %}
-                    </div>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="8" class="text-center text-gray">Заявки не найдены</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-gray">Заявки не найдены</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

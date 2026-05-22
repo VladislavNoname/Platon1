@@ -22,21 +22,13 @@ def user_login(request):
         email = request.POST.get('email', '').strip().lower()
         password = request.POST.get('password', '')
 
-        # Аутентификация по email
         user = authenticate(request, email=email, password=password)
 
         if user is not None:
             if user.is_active:
                 login(request, user)
                 messages.success(request, f'Добро пожаловать, {user.full_name or user.email}!')
-
-                # Перенаправление в зависимости от роли
-                if user.role == 'admin':
-                    return redirect('dashboard')
-                elif user.role == 'manager':
-                    return redirect('dashboard')
-                else:
-                    return redirect('dashboard')
+                return redirect('dashboard')
             else:
                 messages.error(request, 'Ваша учетная запись заблокирована')
         else:
@@ -50,22 +42,21 @@ def register(request):
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
-            # Создаем пользователя
             user = form.save(commit=False)
             user.role = 'client'
             user.client_type = form.cleaned_data['client_type']
 
+            # Получаем название организации из full_name для юр лиц
             if user.client_type == 'organization':
                 user.inn = form.cleaned_data.get('inn', '')
                 user.kpp = form.cleaned_data.get('kpp', '')
                 user.legal_address = form.cleaned_data.get('legal_address', '')
+                # organization_name уже сохранен в full_name
 
             user.save()
 
-            # ВАЖНО: Устанавливаем backend перед login()
             user.backend = 'mainapp.backends.EmailBackend'
 
-            # Создаем уведомление для всех менеджеров о новом клиенте
             managers = User.objects.filter(role='manager', is_active=True)
             for manager in managers:
                 Notification.objects.create(
@@ -74,14 +65,12 @@ def register(request):
                     message=f'Зарегистрирован новый клиент: {user.full_name} ({user.email})'
                 )
 
-            # Создаем уведомление для пользователя
             Notification.objects.create(
                 user=user,
                 notification_type='registration',
-                message='Добро пожаловать в Platon CRM! Ваша учетная запись успешно создана.'
+                message='Добро пожаловать в Баланс CRM! Ваша учетная запись успешно создана.'
             )
 
-            # Авторизуем пользователя
             login(request, user)
             messages.success(request, 'Регистрация успешна!')
             return redirect('dashboard')
@@ -112,7 +101,6 @@ def dashboard(request):
     if user.role == 'client':
         requests = ServiceRequest.objects.filter(client=user)
     elif user.role == 'manager':
-        # Менеджер видит все заявки и своих клиентов
         requests = ServiceRequest.objects.all()
         my_clients = User.objects.filter(role='client', manager=user)
         my_requests = ServiceRequest.objects.filter(manager=user)
@@ -130,7 +118,6 @@ def dashboard(request):
     context['in_progress_count'] = requests.filter(status='in_progress').count()
     context['completed_count'] = requests.filter(status='completed').count()
 
-    # Уведомления
     context['notifications'] = Notification.objects.filter(
         user=user,
         is_read=False
@@ -152,10 +139,15 @@ def request_create(request):
             service = form.cleaned_data['service']
             comment = form.cleaned_data.get('comment', '')
 
-            # Определяем цену в зависимости от типа клиента
+            # Проверка: услуга должна соответствовать типу клиента
+            if request.user.client_type == 'individual' and service.for_individuals == False:
+                messages.error(request, 'Эта услуга недоступна для физических лиц')
+                return redirect('request_create')
+            if request.user.client_type == 'organization' and service.for_organizations == False:
+                messages.error(request, 'Эта услуга недоступна для юридических лиц')
+
             price = service.get_price_for_client(request.user)
 
-            # Создаем заявку
             service_request = ServiceRequest.objects.create(
                 client=request.user,
                 service=service,
@@ -164,7 +156,6 @@ def request_create(request):
                 deadline=timezone.now().date() + timedelta(days=service.default_deadline)
             )
 
-            # Создаем запись в истории
             RequestHistory.objects.create(
                 request=service_request,
                 changed_by=request.user,
@@ -173,7 +164,6 @@ def request_create(request):
                 comment=f'Заявка создана. Услуга: {service.name}. Комментарий: {comment}' if comment else f'Заявка создана. Услуга: {service.name}'
             )
 
-            # Уведомление всем менеджерам о новой заявке
             managers = User.objects.filter(role='manager', is_active=True)
             for manager in managers:
                 Notification.objects.create(
@@ -182,7 +172,6 @@ def request_create(request):
                     message=f'Новая заявка {service_request.number} от клиента {request.user.full_name}'
                 )
 
-            # Уведомление менеджеру клиента (если есть)
             if request.user.manager:
                 Notification.objects.create(
                     user=request.user.manager,
@@ -195,8 +184,11 @@ def request_create(request):
     else:
         form = ServiceRequestForm()
 
-    # Показываем только активные услуги
-    services = Service.objects.filter(is_active=True)
+    # Фильтруем услуги по типу клиента
+    if request.user.client_type == 'individual':
+        services = Service.objects.filter(is_active=True, for_individuals=True)
+    else:
+        services = Service.objects.filter(is_active=True, for_organizations=True)
 
     return render(request, 'mainapp/request_form.html', {
         'form': form,
@@ -212,17 +204,11 @@ def request_list(request):
     if user.role == 'client':
         requests = ServiceRequest.objects.filter(client=user)
     elif user.role == 'manager':
-        # Менеджер видит ВСЕ заявки
         requests = ServiceRequest.objects.all()
     elif user.role == 'admin':
         requests = ServiceRequest.objects.all()
     else:
         requests = ServiceRequest.objects.none()
-
-    # Фильтрация
-    status_filter = request.GET.get('status')
-    if status_filter:
-        requests = requests.filter(status=status_filter)
 
     # Поиск по номеру заявки или клиенту
     search = request.GET.get('search')
@@ -246,19 +232,15 @@ def request_detail(request, pk):
         pk=pk
     )
 
-    # Проверка доступа
     user = request.user
     if user.role == 'client':
         if service_request.client != user:
             messages.error(request, 'Доступ запрещен')
             return redirect('dashboard')
-    # Менеджер и админ видят все заявки
 
     history = service_request.history.all().order_by('-timestamp')
     documents = service_request.documents.all()
     invoices = service_request.invoices.all()
-
-    # Документы, которые нужно загрузить
     missing_docs = service_request.get_missing_documents()
 
     return render(request, 'mainapp/request_detail.html', {
@@ -283,13 +265,11 @@ def request_take(request, pk):
         messages.warning(request, f'Эта заявка уже назначена менеджеру {service_request.manager.full_name}')
         return redirect('request_detail', pk=pk)
 
-    # Назначаем менеджера и меняем статус
     old_status = service_request.get_status_display()
     service_request.manager = request.user
     service_request.status = 'in_progress'
     service_request.save()
 
-    # История
     RequestHistory.objects.create(
         request=service_request,
         changed_by=request.user,
@@ -307,7 +287,6 @@ def request_take(request, pk):
         new_value='В работе'
     )
 
-    # Уведомление клиенту
     Notification.objects.create(
         user=service_request.client,
         notification_type='status_change',
@@ -328,14 +307,11 @@ def request_change_status(request, pk, new_status):
     service_request = get_object_or_404(ServiceRequest, pk=pk)
     old_status = service_request.get_status_display()
 
-    # Проверка доступа для менеджера
     if request.user.role == 'manager':
-        # Менеджер может менять статус только если заявка назначена ему или никому не назначена
         if service_request.manager and service_request.manager != request.user:
-            messages.error(request, 'Вы не можете менять статус чужой заявки. Сначала возьмите её в работу.')
+            messages.error(request, 'Вы не можете менять статус чужой заявки')
             return redirect('request_detail', pk=pk)
 
-    # Логика переходов статусов
     valid_transitions = {
         'new': ['in_progress', 'rejected'],
         'awaiting_payment': ['in_progress', 'rejected'],
@@ -345,7 +321,6 @@ def request_change_status(request, pk, new_status):
     }
 
     if new_status in valid_transitions.get(service_request.status, []):
-        # Проверка на наличие всех документов при переходе
         if new_status == 'in_progress':
             if not service_request.manager:
                 service_request.manager = request.user
@@ -357,7 +332,6 @@ def request_change_status(request, pk, new_status):
 
         service_request.save()
 
-        # Создаем запись в истории
         RequestHistory.objects.create(
             request=service_request,
             changed_by=request.user,
@@ -367,14 +341,12 @@ def request_change_status(request, pk, new_status):
             comment=request.POST.get('comment', '')
         )
 
-        # Создаем уведомление для клиента
         Notification.objects.create(
             user=service_request.client,
             notification_type='status_change',
             message=f'Статус вашей заявки {service_request.number} изменен на "{service_request.get_status_display()}"'
         )
 
-        # Отправляем email
         try:
             send_mail(
                 f'Изменение статуса заявки {service_request.number}',
@@ -398,7 +370,6 @@ def upload_document(request, pk):
     """Загрузка документа к заявке"""
     service_request = get_object_or_404(ServiceRequest, pk=pk)
 
-    # Проверка доступа
     if request.user.role == 'client':
         if service_request.client != request.user:
             messages.error(request, 'Доступ запрещен')
@@ -407,37 +378,45 @@ def upload_document(request, pk):
     if request.method == 'POST':
         required_doc_id = request.POST.get('required_document')
         file = request.FILES.get('file')
+        payment_proof = request.POST.get('payment_proof', False)
 
         if file and required_doc_id:
-            # Проверка размера файла (10 МБ)
             if file.size > 10 * 1024 * 1024:
                 messages.error(request, 'Размер файла не должен превышать 10 МБ')
                 return redirect('request_detail', pk=pk)
 
-            # Проверка типа файла
             if not file.name.lower().endswith('.pdf'):
                 messages.error(request, 'Допустимы только PDF файлы')
                 return redirect('request_detail', pk=pk)
 
-            # Проверка MIME типа
             if file.content_type != 'application/pdf':
                 messages.error(request, 'Файл должен быть формата PDF')
                 return redirect('request_detail', pk=pk)
 
             required_doc = get_object_or_404(RequiredDocument, pk=required_doc_id)
 
-            # Проверяем, что документ относится к услуге заявки
             if required_doc.service != service_request.service:
                 messages.error(request, 'Этот тип документа не относится к выбранной услуге')
                 return redirect('request_detail', pk=pk)
 
-            RequestDocument.objects.create(
-                request=service_request,
-                required_document=required_doc,
-                file=file
-            )
+            # Если это подтверждение оплаты
+            if payment_proof:
+                invoice = get_object_or_404(Invoice, pk=required_doc_id)
+                invoice.payment_proof = file
+                invoice.save()
+                messages.success(request, 'Подтверждение оплаты загружено')
+            else:
+                # Проверяем, что документ обязательный
+                if not required_doc.is_required:
+                    messages.error(request, 'Дополнительные документы не принимаются')
+                    return redirect('request_detail', pk=pk)
 
-            messages.success(request, 'Документ загружен')
+                RequestDocument.objects.create(
+                    request=service_request,
+                    required_document=required_doc,
+                    file=file
+                )
+                messages.success(request, 'Документ загружен')
         else:
             messages.error(request, 'Выберите тип документа и файл')
 
@@ -460,6 +439,12 @@ def create_invoice(request, pk):
                        ', '.join(missing))
         return redirect('request_detail', pk=pk)
 
+    # Проверяем, нет ли уже неоплаченного счета
+    existing_invoice = service_request.invoices.filter(is_paid=False).first()
+    if existing_invoice:
+        messages.warning(request, f'Уже есть неоплаченный счет {existing_invoice.number}')
+        return redirect('request_detail', pk=pk)
+
     # Создаем счет
     invoice = Invoice.objects.create(
         request=service_request,
@@ -471,7 +456,6 @@ def create_invoice(request, pk):
     service_request.status = 'awaiting_payment'
     service_request.save()
 
-    # История
     RequestHistory.objects.create(
         request=service_request,
         changed_by=request.user,
@@ -481,14 +465,12 @@ def create_invoice(request, pk):
         comment=f'Создан счет {invoice.number}'
     )
 
-    # Уведомление клиенту
     Notification.objects.create(
         user=service_request.client,
         notification_type='payment_required',
         message=f'Выставлен счет {invoice.number} на оплату заявки {service_request.number} на сумму {invoice.amount} руб.'
     )
 
-    # Отправляем email со счетом
     try:
         send_mail(
             f'Счет на оплату {invoice.number}',
@@ -507,40 +489,125 @@ def create_invoice(request, pk):
 
 
 @login_required
+def upload_payment_proof(request, pk):
+    """Загрузка подтверждения оплаты клиентом"""
+    if request.user.role != 'client':
+        messages.error(request, 'Только клиент может загрузить подтверждение оплаты')
+        return redirect('request_detail', pk=pk)
+
+    invoice = get_object_or_404(Invoice, pk=pk)
+
+    if invoice.request.client != request.user:
+        messages.error(request, 'Доступ запрещен')
+        return redirect('dashboard')
+
+    if request.method == 'POST' and request.FILES.get('payment_proof'):
+        file = request.FILES['payment_proof']
+
+        if file.size > 10 * 1024 * 1024:
+            messages.error(request, 'Размер файла не должен превышать 10 МБ')
+            return redirect('request_detail', pk=invoice.request.pk)
+
+        if not file.name.lower().endswith('.pdf'):
+            messages.error(request, 'Допустимы только PDF файлы')
+            return redirect('request_detail', pk=invoice.request.pk)
+
+        invoice.payment_proof = file
+        invoice.save()
+
+        # Уведомление менеджеру
+        if invoice.request.manager:
+            Notification.objects.create(
+                user=invoice.request.manager,
+                notification_type='payment_required',
+                message=f'Клиент загрузил подтверждение оплаты по счету {invoice.number}'
+            )
+
+        messages.success(request, 'Подтверждение оплаты загружено. Менеджер проверит и подтвердит оплату.')
+
+    return redirect('request_detail', pk=invoice.request.pk)
+
+
+@login_required
 def mark_payment(request, pk):
-    """Отметка об оплате"""
+    """Отметка об оплате (для менеджера)"""
     if request.user.role not in ['manager', 'admin']:
         messages.error(request, 'Недостаточно прав')
         return redirect('request_detail', pk=pk)
 
     invoice = get_object_or_404(Invoice, pk=pk)
+
+    # Проверяем, есть ли подтверждение оплаты от клиента
+    if not invoice.payment_proof and request.user.role != 'admin':
+        messages.error(request, 'Клиент еще не загрузил подтверждение оплаты')
+        return redirect('request_detail', pk=invoice.request.pk)
+
     invoice.is_paid = True
     invoice.paid_at = timezone.now()
     invoice.save()
 
-    # Меняем статус заявки
     service_request = invoice.request
     old_status = service_request.get_status_display()
     service_request.status = 'in_progress'
 
-    # Назначаем менеджера, если еще не назначен
     if not service_request.manager:
         service_request.manager = request.user
 
     service_request.save()
 
-    # История
     RequestHistory.objects.create(
         request=service_request,
         changed_by=request.user,
         field_name='status',
         old_value=old_status,
         new_value='В работе',
-        comment='Оплата получена'
+        comment='Оплата подтверждена'
     )
 
-    messages.success(request, 'Оплата отмечена')
+    Notification.objects.create(
+        user=service_request.client,
+        notification_type='status_change',
+        message=f'Оплата по счету {invoice.number} подтверждена. Заявка {service_request.number} перешла в статус "В работе"'
+    )
+
+    messages.success(request, 'Оплата подтверждена')
     return redirect('request_detail', pk=service_request.pk)
+
+
+@login_required
+def mark_completed(request, pk):
+    """Отметка о выполнении заявки"""
+    if request.user.role not in ['manager', 'admin']:
+        messages.error(request, 'Недостаточно прав')
+        return redirect('request_detail', pk=pk)
+
+    service_request = get_object_or_404(ServiceRequest, pk=pk)
+
+    if service_request.status != 'in_progress':
+        messages.error(request, 'Заявка должна быть в статусе "В работе"')
+        return redirect('request_detail', pk=pk)
+
+    old_status = service_request.get_status_display()
+    service_request.status = 'completed'
+    service_request.save()
+
+    RequestHistory.objects.create(
+        request=service_request,
+        changed_by=request.user,
+        field_name='status',
+        old_value=old_status,
+        new_value='Выполнена',
+        comment='Заявка выполнена'
+    )
+
+    Notification.objects.create(
+        user=service_request.client,
+        notification_type='completed',
+        message=f'Заявка {service_request.number} выполнена'
+    )
+
+    messages.success(request, 'Заявка отмечена как выполненная')
+    return redirect('request_detail', pk=pk)
 
 
 @login_required
@@ -549,14 +616,12 @@ def client_list(request):
     user = request.user
 
     if user.role == 'manager':
-        # Менеджер видит всех клиентов
         clients = User.objects.filter(role='client')
     elif user.role == 'admin':
         clients = User.objects.filter(role='client')
     else:
         clients = User.objects.none()
 
-    # Поиск
     search = request.GET.get('search')
     if search:
         clients = clients.filter(
@@ -622,34 +687,68 @@ def reports(request):
     for item in status_stats:
         reports_data[item['status'] + '_count'] = item['count']
 
-    # Финансовые показатели
-    invoices = Invoice.objects.filter(**filters)
-    total_amount = invoices.aggregate(total=Sum('amount'))['total'] or 0
-    paid_amount = invoices.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+    reports_data['total_count'] = sum(reports_data.values())
+
+    # Среднее время обработки (для выполненных заявок)
+    completed_requests = ServiceRequest.objects.filter(
+        status='completed',
+        **filters
+    )
+
+    avg_time_seconds = 0
+    avg_time_hours = 0
+    for req in completed_requests:
+        # Ищем момент перехода в статус completed
+        completed_history = req.history.filter(field_name='status', new_value='Выполнена').first()
+        if completed_history:
+            time_diff = completed_history.timestamp - req.created_at
+            avg_time_seconds += time_diff.total_seconds()
+
+    if completed_requests.count() > 0:
+        avg_time_seconds = avg_time_seconds / completed_requests.count()
+        avg_time_hours = round(avg_time_seconds / 3600, 1)
 
     # Загрузка менеджеров
-    if date_from and date_to:
-        manager_load = User.objects.filter(role='manager').annotate(
-            request_count=Count('assigned_requests', filter=Q(
-                assigned_requests__created_at__gte=date_from,
-                assigned_requests__created_at__lte=date_to
-            ))
-        ).values('full_name', 'email', 'request_count')
-    else:
-        # Если даты не указаны, показываем за текущий месяц
-        today = timezone.now()
-        manager_load = User.objects.filter(role='manager').annotate(
-            request_count=Count('assigned_requests', filter=Q(
-                assigned_requests__created_at__year=today.year,
-                assigned_requests__created_at__month=today.month
-            ))
-        ).values('full_name', 'email', 'request_count')
+    manager_load = []
+    managers = User.objects.filter(role='manager')
+    for manager in managers:
+        if date_from and date_to:
+            request_count = ServiceRequest.objects.filter(
+                manager=manager,
+                created_at__gte=date_from,
+                created_at__lte=date_to
+            ).count()
+        else:
+            today = timezone.now()
+            request_count = ServiceRequest.objects.filter(
+                manager=manager,
+                created_at__year=today.year,
+                created_at__month=today.month
+            ).count()
+
+        if request_count > 0 or manager.full_name:
+            manager_load.append({
+                'name': manager.full_name or manager.email,
+                'count': request_count
+            })
+
+    # Финансовые показатели
+    invoice_filters = {}
+    if date_from:
+        invoice_filters['created_at__gte'] = date_from
+    if date_to:
+        invoice_filters['created_at__lte'] = date_to
+
+    invoices = Invoice.objects.filter(**invoice_filters)
+    total_invoices = invoices.aggregate(total=Sum('amount'))['total'] or 0
+    paid_invoices = invoices.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
 
     return render(request, 'mainapp/reports.html', {
         'reports': reports_data,
-        'total_amount': total_amount,
-        'paid_amount': paid_amount,
+        'avg_time_hours': avg_time_hours,
         'manager_load': manager_load,
+        'total_invoices': total_invoices,
+        'paid_invoices': paid_invoices,
         'date_from': date_from,
         'date_to': date_to
     })
