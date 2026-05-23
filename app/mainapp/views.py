@@ -630,7 +630,9 @@ def reports(request):
     }
 
     for item in status_stats:
-        reports_data[item['status'] + '_count'] = item['count']
+        status_key = item['status'] + '_count'
+        if status_key in reports_data:
+            reports_data[status_key] = item['count']
 
     reports_data['total_count'] = sum(reports_data.values())
 
@@ -657,13 +659,17 @@ def reports(request):
     manager_load = []
     managers = User.objects.filter(role='manager')
     for manager in managers:
-        if date_from and date_to:
-            request_count = ServiceRequest.objects.filter(
-                manager=manager,
-                created_at__gte=date_from,
-                created_at__lte=date_to
-            ).count()
-        else:
+        # Фильтруем заявки по дате создания
+        manager_filters = {'manager': manager}
+        if date_from:
+            manager_filters['created_at__gte'] = date_from
+        if date_to:
+            manager_filters['created_at__lte'] = date_to
+
+        request_count = ServiceRequest.objects.filter(**manager_filters).count()
+
+        # Если нет фильтров по дате, берем за текущий месяц
+        if not date_from and not date_to:
             today = timezone.now()
             request_count = ServiceRequest.objects.filter(
                 manager=manager,
@@ -677,7 +683,7 @@ def reports(request):
                 'count': request_count
             })
 
-    # Финансовые показатели
+    # Финансовые показатели - ИСПРАВЛЕНО
     invoice_filters = {}
     if date_from:
         invoice_filters['created_at__gte'] = date_from
@@ -685,8 +691,13 @@ def reports(request):
         invoice_filters['created_at__lte'] = date_to
 
     invoices = Invoice.objects.filter(**invoice_filters)
-    total_invoices = invoices.aggregate(total=Sum('amount'))['total'] or 0
-    paid_invoices = invoices.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+
+    # Используем aggregate с правильной обработкой None
+    total_invoices_sum = invoices.aggregate(total=Sum('amount'))['total']
+    total_invoices = float(total_invoices_sum) if total_invoices_sum is not None else 0
+
+    paid_invoices_sum = invoices.filter(is_paid=True).aggregate(total=Sum('amount'))['total']
+    paid_invoices = float(paid_invoices_sum) if paid_invoices_sum is not None else 0
 
     return render(request, 'mainapp/reports.html', {
         'reports': reports_data,

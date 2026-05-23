@@ -36,6 +36,8 @@ class RequiredDocumentInline(admin.TabularInline):
     model = RequiredDocument
     extra = 1
     fields = ['name', 'order']
+    fk_name = 'service'
+    can_delete = True
 
 
 @admin.register(Service)

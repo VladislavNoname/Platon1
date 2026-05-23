@@ -144,9 +144,14 @@
                         <tr>
                             <td>{{ doc.required_document.name }}</td>
                             <td>
-                                <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank" download="{{ doc.file.name }}">
-                                    <i class="fas fa-download"></i> Скачать PDF
-                                </a>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
+                                        <i class="fas fa-eye"></i> Просмотреть
+                                    </a>
+                                    <a href="{{ doc.file.url }}" class="btn btn-sm btn-secondary" download>
+                                        <i class="fas fa-download"></i> Скачать
+                                    </a>
+                                </div>
                             </td>
                             <td>{{ doc.uploaded_at|date:"d.m.Y H:i" }}</td>
                         </tr>
