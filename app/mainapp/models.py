@@ -125,11 +125,12 @@ class Service(models.Model):
 
 
 class RequiredDocument(models.Model):
-    """Обязательные документы для услуги - все документы обязательные"""
+    """Обязательные документы для услуги"""
     service = models.ForeignKey(Service, on_delete=models.CASCADE,
                                 related_name='required_documents',
                                 verbose_name='Услуга')
     name = models.CharField(max_length=255, verbose_name='Название документа')
+    is_required = models.BooleanField(default=True, verbose_name='Обязательный')
     order = models.PositiveIntegerField(default=0, verbose_name='Порядок')
 
     class Meta:

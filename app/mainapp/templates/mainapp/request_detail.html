@@ -44,10 +44,10 @@
             {% if user.role == 'manager' and req.manager == user %}
             <div class="mt-15 flex-between gap-10" style="flex-wrap: wrap;">
                 {% if req.status == 'new' %}
-                <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
+                <form method="post" action="{% url 'change_status' req.pk 'in_progress' %}" style="display: inline;">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-warning">
-                        <i class="fas fa-file-invoice"></i> Создать счет на оплату
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-handshake"></i> Взять в работу
                     </button>
                 </form>
                 <form method="post" action="{% url 'change_status' req.pk 'rejected' %}" style="display: inline;">
@@ -84,11 +84,7 @@
 
             {% if user.role == 'admin' %}
             <div class="mt-15 flex-between gap-10" style="flex-wrap: wrap;">
-                {% if req.status == 'new' or req.status == 'in_progress' %}
-                <form method="post" action="{% url 'create_invoice' req.pk %}" style="display: inline;">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-warning">Создать счет</button>
-                </form>
+                {% if req.status == 'new' %}
                 <a href="{% url 'change_status' req.pk 'rejected' %}" class="btn btn-danger">Отклонить</a>
                 {% elif req.status == 'awaiting_payment' %}
                 <a href="{% url 'mark_payment' req.invoices.first.pk %}" class="btn btn-success">Отметить оплату</a>
@@ -145,10 +141,10 @@
                             <td>{{ doc.required_document.name }}</td>
                             <td>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <a href="{{ doc.file.url }}" class="btn btn-sm btn-primary" target="_blank">
+                                    <a href="{% url 'serve_document' doc.pk %}" class="btn btn-sm btn-primary" target="_blank">
                                         <i class="fas fa-eye"></i> Просмотреть
                                     </a>
-                                    <a href="{{ doc.file.url }}" class="btn btn-sm btn-secondary" download>
+                                    <a href="{% url 'serve_document' doc.pk %}" class="btn btn-sm btn-secondary" download>
                                         <i class="fas fa-download"></i> Скачать
                                     </a>
                                 </div>

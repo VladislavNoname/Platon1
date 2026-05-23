@@ -35,7 +35,7 @@ class UserAdmin(BaseUserAdmin):
 class RequiredDocumentInline(admin.TabularInline):
     model = RequiredDocument
     extra = 1
-    fields = ['name', 'order']
+    fields = ['name', 'is_required', 'order']
     fk_name = 'service'
     can_delete = True
 

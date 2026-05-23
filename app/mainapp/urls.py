@@ -17,6 +17,8 @@ urlpatterns = [
          views.request_change_status, name='change_status'),
     path('requests/<int:pk>/upload-document/',
          views.upload_document, name='upload_document'),
+    path('documents/<int:pk>/view/',
+         views.serve_document, name='serve_document'),
     path('requests/<int:pk>/mark-completed/',
          views.mark_completed, name='mark_completed'),
 
