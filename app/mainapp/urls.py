@@ -34,6 +34,7 @@ urlpatterns = [
 
     # Отчеты
     path('reports/', views.reports, name='reports'),
+    path('reports/pdf/', views.reports_pdf, name='reports_pdf'),
 
     # Уведомления
     path('notifications/<int:pk>/read/',

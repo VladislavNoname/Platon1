@@ -16,7 +16,13 @@
             <input type="date" name="date_to" class="form-control" value="{{ date_to }}" style="width: 180px;">
         </div>
     </div>
-    <button type="submit" class="btn btn-primary">Сформировать</button>
+    <div style="display: flex; gap: 10px;">
+        <button type="submit" class="btn btn-primary">Сформировать</button>
+        {% if user.role == 'admin' or user.is_superuser %}
+        <button type="submit" formaction="{% url 'reports_pdf' %}" formtarget="_blank"
+                class="btn" style="background: var(--success); color: #fff;">⬇ Скачать PDF</button>
+        {% endif %}
+    </div>
 </form>
 
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-top: 20px;">

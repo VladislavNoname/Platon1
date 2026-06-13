@@ -6,9 +6,18 @@ from django.db.models import Q, Count, Sum
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.conf import settings
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.http import HttpResponse, Http404
+from io import BytesIO
 import os
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 from .models import (
     User, Service, ServiceRequest,
@@ -479,14 +488,9 @@ def assign_client(request, pk):
     return redirect('client_list')
 
 
-@login_required
-def reports(request):
-    if request.user.role != 'admin':
-        messages.error(request, 'Доступ запрещен')
-        return redirect('dashboard')
-
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
+def _compute_report_data(date_from, date_to):
+    """Единый расчёт отчёта. Используется и страницей, и PDF-выгрузкой,
+    чтобы цифры всегда совпадали. date_from / date_to — строки 'ГГГГ-ММ-ДД' или None."""
 
     filters = {}
     if date_from:
@@ -498,7 +502,6 @@ def reports(request):
     status_stats = ServiceRequest.objects.filter(**filters).values('status').annotate(
         count=Count('id')
     )
-
     reports_data = {
         'new_count': 0,
         'awaiting_payment_count': 0,
@@ -506,17 +509,14 @@ def reports(request):
         'completed_count': 0,
         'rejected_count': 0,
     }
-
     for item in status_stats:
         status_key = item['status'] + '_count'
         if status_key in reports_data:
             reports_data[status_key] = item['count']
-
     reports_data['total_count'] = sum(reports_data.values())
 
     # Среднее время обработки (для выполненных заявок)
     completed_requests = ServiceRequest.objects.filter(status='completed', **filters)
-
     avg_time_seconds = 0
     avg_time_hours = 0
     for req in completed_requests:
@@ -524,7 +524,6 @@ def reports(request):
         if completed_history:
             time_diff = completed_history.timestamp - req.created_at
             avg_time_seconds += time_diff.total_seconds()
-
     if completed_requests.count() > 0:
         avg_time_seconds = avg_time_seconds / completed_requests.count()
         avg_time_hours = round(avg_time_seconds / 3600, 1)
@@ -552,7 +551,7 @@ def reports(request):
                 'count': request_count
             })
 
-    # Финансовые показатели — считаем по ценам заявок, а не по счетам
+    # Финансовые показатели — считаем по ценам заявок
     request_filters = {}
     if date_from:
         request_filters['created_at__gte'] = date_from
@@ -569,15 +568,151 @@ def reports(request):
     ).aggregate(total=Sum('price'))['total']
     paid_invoices = float(paid_sum) if paid_sum is not None else 0
 
-    return render(request, 'mainapp/reports.html', {
+    return {
         'reports': reports_data,
         'avg_time_hours': avg_time_hours,
         'manager_load': manager_load,
         'total_invoices': total_invoices,
         'paid_invoices': paid_invoices,
         'date_from': date_from,
-        'date_to': date_to
-    })
+        'date_to': date_to,
+    }
+
+
+@login_required
+def reports(request):
+    if request.user.role != 'admin':
+        messages.error(request, 'Доступ запрещен')
+        return redirect('dashboard')
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    data = _compute_report_data(date_from, date_to)
+    return render(request, 'mainapp/reports.html', data)
+
+
+def _register_pdf_font():
+    """Шрифт с поддержкой кириллицы. Перебирает несколько путей, чтобы не упасть
+    ни на Windows, ни на Linux. Возвращает (обычный, жирный)."""
+    candidates = [
+        ("Main", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+        ("Main", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]
+    for name, reg, bold in candidates:
+        try:
+            pdfmetrics.registerFont(TTFont(name, reg))
+            pdfmetrics.registerFont(TTFont(name + "-Bold", bold))
+            return name, name + "-Bold"
+        except Exception:
+            continue
+    return "Helvetica", "Helvetica-Bold"  # запасной вариант (без кириллицы)
+
+
+@login_required
+def reports_pdf(request):
+    """Скачивание отчёта в PDF. Доступно только администратору.
+    Использует ту же логику расчёта, что и страница отчётов."""
+    if request.user.role != 'admin':
+        return HttpResponse('Доступ запрещён', status=403)
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    data = _compute_report_data(date_from, date_to)
+
+    FONT, FONT_B = _register_pdf_font()
+    PRIMARY = colors.HexColor('#6C5CE7')
+    GRAY = colors.HexColor('#6B7280')
+
+    base = getSampleStyleSheet()
+    h_title = ParagraphStyle('t', parent=base['Title'], fontName=FONT_B,
+                             fontSize=20, textColor=colors.HexColor('#111827'))
+    h_sec = ParagraphStyle('s', parent=base['Heading2'], fontName=FONT_B,
+                           fontSize=13, textColor=PRIMARY, spaceBefore=16, spaceAfter=6)
+    normal = ParagraphStyle('n', parent=base['Normal'], fontName=FONT, fontSize=11)
+    small = ParagraphStyle('sg', parent=base['Normal'], fontName=FONT,
+                           fontSize=9, textColor=GRAY)
+
+    def make_table(rows, bold_header=True, bold_last=False):
+        t = Table(rows, colWidths=[110 * mm, 50 * mm])
+        style = [
+            ('FONTNAME', (0, 0), (-1, -1), FONT),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F4F6')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ]
+        if bold_header:
+            style += [('FONTNAME', (0, 0), (-1, 0), FONT_B),
+                      ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+                      ('TEXTCOLOR', (0, 0), (-1, 0), colors.white)]
+        if bold_last:
+            style += [('FONTNAME', (0, -1), (-1, -1), FONT_B),
+                      ('LINEABOVE', (0, -1), (-1, -1), 1, colors.HexColor('#D1D5DB'))]
+        t.setStyle(TableStyle(style))
+        return t
+
+    def fmt_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except (ValueError, TypeError):
+            return s
+
+    story = [Paragraph("Отчёт и аналитика", h_title)]
+
+    if date_from or date_to:
+        df = fmt_date(date_from) if date_from else '…'
+        dt = fmt_date(date_to) if date_to else '…'
+        story.append(Paragraph(f"Период: {df} — {dt}", small))
+    else:
+        story.append(Paragraph("Период: за всё время", small))
+    story.append(Paragraph("Сформировано: " +
+                           timezone.localtime().strftime('%d.%m.%Y %H:%M'), small))
+    story.append(Spacer(1, 10))
+
+    rd = data['reports']
+    story.append(Paragraph("Заявки по статусам", h_sec))
+    story.append(make_table([
+        ['Показатель', 'Кол-во'],
+        ['Новые', rd['new_count']],
+        ['Ожидают оплаты', rd['awaiting_payment_count']],
+        ['В работе', rd['in_progress_count']],
+        ['Выполнено', rd['completed_count']],
+        ['Отклонено', rd['rejected_count']],
+        ['Всего', rd['total_count']],
+    ], bold_last=True))
+
+    story.append(Paragraph("Среднее время обработки", h_sec))
+    story.append(Paragraph(
+        f"{data['avg_time_hours']} часов (для выполненных заявок за период)", normal))
+
+    story.append(Paragraph("Загрузка менеджеров", h_sec))
+    ml_rows = [['Менеджер', 'Заявок']]
+    ml_rows += ([[m['name'], m['count']] for m in data['manager_load']]
+                or [['Нет данных', '']])
+    story.append(make_table(ml_rows))
+
+    story.append(Paragraph("Финансовые показатели", h_sec))
+    story.append(make_table([
+        ['Выставлено счетов', f"{data['total_invoices']:.2f} руб."],
+        ['Оплачено', f"{data['paid_invoices']:.2f} руб."],
+    ], bold_header=False))
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=20 * mm, title="Отчёт")
+    doc.build(story)
+    pdf = buffer.getvalue()
+    buffer.close()
+
+    fname = "report"
+    if date_from or date_to:
+        fname += "_%s-%s" % (date_from or '', date_to or '')
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{fname}.pdf"'
+    return response
 
 
 @login_required
