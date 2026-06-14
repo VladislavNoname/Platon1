@@ -488,9 +488,135 @@ def assign_client(request, pk):
     return redirect('client_list')
 
 
-def _compute_report_data(date_from, date_to):
-    """Единый расчёт отчёта. Используется и страницей, и PDF-выгрузкой,
-    чтобы цифры всегда совпадали. date_from / date_to — строки 'ГГГГ-ММ-ДД' или None."""
+@login_required
+def reports(request):
+    if request.user.role != 'admin':
+        messages.error(request, 'Доступ запрещен')
+        return redirect('dashboard')
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    filters = {}
+    if date_from:
+        filters['created_at__gte'] = date_from
+    if date_to:
+        filters['created_at__lte'] = date_to
+
+    # Статистика по статусам
+    status_stats = ServiceRequest.objects.filter(**filters).values('status').annotate(
+        count=Count('id')
+    )
+
+    reports_data = {
+        'new_count': 0,
+        'awaiting_payment_count': 0,
+        'in_progress_count': 0,
+        'completed_count': 0,
+        'rejected_count': 0,
+    }
+
+    for item in status_stats:
+        status_key = item['status'] + '_count'
+        if status_key in reports_data:
+            reports_data[status_key] = item['count']
+
+    reports_data['total_count'] = sum(reports_data.values())
+
+    # Среднее время обработки (для выполненных заявок)
+    completed_requests = ServiceRequest.objects.filter(status='completed', **filters)
+
+    avg_time_seconds = 0
+    avg_time_hours = 0
+    for req in completed_requests:
+        completed_history = req.history.filter(field_name='status', new_value='Выполнена').first()
+        if completed_history:
+            time_diff = completed_history.timestamp - req.created_at
+            avg_time_seconds += time_diff.total_seconds()
+
+    if completed_requests.count() > 0:
+        avg_time_seconds = avg_time_seconds / completed_requests.count()
+        avg_time_hours = round(avg_time_seconds / 3600, 1)
+
+    # Загрузка менеджеров
+    manager_load = []
+    managers = User.objects.filter(role='manager')
+    for manager in managers:
+        manager_filters = {'manager': manager}
+        if date_from:
+            manager_filters['created_at__gte'] = date_from
+        if date_to:
+            manager_filters['created_at__lte'] = date_to
+        request_count = ServiceRequest.objects.filter(**manager_filters).count()
+        if not date_from and not date_to:
+            today = timezone.now()
+            request_count = ServiceRequest.objects.filter(
+                manager=manager,
+                created_at__year=today.year,
+                created_at__month=today.month
+            ).count()
+        if request_count > 0 or manager.full_name:
+            manager_load.append({
+                'name': manager.full_name or manager.email,
+                'count': request_count
+            })
+
+    # Финансовые показатели — считаем по ценам заявок, а не по счетам
+    request_filters = {}
+    if date_from:
+        request_filters['created_at__gte'] = date_from
+    if date_to:
+        request_filters['created_at__lte'] = date_to
+
+    total_sum = ServiceRequest.objects.filter(
+        status__in=['awaiting_payment', 'in_progress', 'completed'], **request_filters
+    ).aggregate(total=Sum('price'))['total']
+    total_invoices = float(total_sum) if total_sum is not None else 0
+
+    paid_sum = ServiceRequest.objects.filter(
+        status='completed', **request_filters
+    ).aggregate(total=Sum('price'))['total']
+    paid_invoices = float(paid_sum) if paid_sum is not None else 0
+
+    return render(request, 'mainapp/reports.html', {
+        'reports': reports_data,
+        'avg_time_hours': avg_time_hours,
+        'manager_load': manager_load,
+        'total_invoices': total_invoices,
+        'paid_invoices': paid_invoices,
+        'date_from': date_from,
+        'date_to': date_to
+    })
+
+
+def _register_pdf_font():
+    """Шрифт с поддержкой кириллицы. Перебирает несколько путей, чтобы не упасть
+    ни на Windows, ни на Linux. Возвращает (обычный, жирный)."""
+    candidates = [
+        ("Main", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
+        ("Main", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]
+    for name, reg, bold in candidates:
+        try:
+            pdfmetrics.registerFont(TTFont(name, reg))
+            pdfmetrics.registerFont(TTFont(name + "-Bold", bold))
+            return name, name + "-Bold"
+        except Exception:
+            continue
+    return "Helvetica", "Helvetica-Bold"  # запасной вариант (без кириллицы)
+
+
+@login_required
+def reports_pdf(request):
+    """Выгрузка аналитического отчёта в PDF. Доступна только администратору.
+    Повторяет расчёт показателей функции reports, дополнительно формируя
+    из них PDF-документ средствами библиотеки ReportLab."""
+    if request.user.role != 'admin':
+        return HttpResponse('Доступ запрещён', status=403)
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
 
     filters = {}
     if date_from:
@@ -568,58 +694,7 @@ def _compute_report_data(date_from, date_to):
     ).aggregate(total=Sum('price'))['total']
     paid_invoices = float(paid_sum) if paid_sum is not None else 0
 
-    return {
-        'reports': reports_data,
-        'avg_time_hours': avg_time_hours,
-        'manager_load': manager_load,
-        'total_invoices': total_invoices,
-        'paid_invoices': paid_invoices,
-        'date_from': date_from,
-        'date_to': date_to,
-    }
-
-
-@login_required
-def reports(request):
-    if request.user.role != 'admin':
-        messages.error(request, 'Доступ запрещен')
-        return redirect('dashboard')
-
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
-    data = _compute_report_data(date_from, date_to)
-    return render(request, 'mainapp/reports.html', data)
-
-
-def _register_pdf_font():
-    """Шрифт с поддержкой кириллицы. Перебирает несколько путей, чтобы не упасть
-    ни на Windows, ни на Linux. Возвращает (обычный, жирный)."""
-    candidates = [
-        ("Main", r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
-        ("Main", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    ]
-    for name, reg, bold in candidates:
-        try:
-            pdfmetrics.registerFont(TTFont(name, reg))
-            pdfmetrics.registerFont(TTFont(name + "-Bold", bold))
-            return name, name + "-Bold"
-        except Exception:
-            continue
-    return "Helvetica", "Helvetica-Bold"  # запасной вариант (без кириллицы)
-
-
-@login_required
-def reports_pdf(request):
-    """Скачивание отчёта в PDF. Доступно только администратору.
-    Использует ту же логику расчёта, что и страница отчётов."""
-    if request.user.role != 'admin':
-        return HttpResponse('Доступ запрещён', status=403)
-
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
-    data = _compute_report_data(date_from, date_to)
-
+    # Формирование PDF
     FONT, FONT_B = _register_pdf_font()
     PRIMARY = colors.HexColor('#6C5CE7')
     GRAY = colors.HexColor('#6B7280')
@@ -672,32 +747,31 @@ def reports_pdf(request):
                            timezone.localtime().strftime('%d.%m.%Y %H:%M'), small))
     story.append(Spacer(1, 10))
 
-    rd = data['reports']
     story.append(Paragraph("Заявки по статусам", h_sec))
     story.append(make_table([
         ['Показатель', 'Кол-во'],
-        ['Новые', rd['new_count']],
-        ['Ожидают оплаты', rd['awaiting_payment_count']],
-        ['В работе', rd['in_progress_count']],
-        ['Выполнено', rd['completed_count']],
-        ['Отклонено', rd['rejected_count']],
-        ['Всего', rd['total_count']],
+        ['Новые', reports_data['new_count']],
+        ['Ожидают оплаты', reports_data['awaiting_payment_count']],
+        ['В работе', reports_data['in_progress_count']],
+        ['Выполнено', reports_data['completed_count']],
+        ['Отклонено', reports_data['rejected_count']],
+        ['Всего', reports_data['total_count']],
     ], bold_last=True))
 
     story.append(Paragraph("Среднее время обработки", h_sec))
     story.append(Paragraph(
-        f"{data['avg_time_hours']} часов (для выполненных заявок за период)", normal))
+        f"{avg_time_hours} часов (для выполненных заявок за период)", normal))
 
     story.append(Paragraph("Загрузка менеджеров", h_sec))
     ml_rows = [['Менеджер', 'Заявок']]
-    ml_rows += ([[m['name'], m['count']] for m in data['manager_load']]
+    ml_rows += ([[m['name'], m['count']] for m in manager_load]
                 or [['Нет данных', '']])
     story.append(make_table(ml_rows))
 
     story.append(Paragraph("Финансовые показатели", h_sec))
     story.append(make_table([
-        ['Выставлено счетов', f"{data['total_invoices']:.2f} руб."],
-        ['Оплачено', f"{data['paid_invoices']:.2f} руб."],
+        ['Выставлено счетов', f"{total_invoices:.2f} руб."],
+        ['Оплачено', f"{paid_invoices:.2f} руб."],
     ], bold_header=False))
 
     buffer = BytesIO()
